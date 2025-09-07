@@ -75,7 +75,7 @@ python main.py --config p2e-dmc-walker-walk
 │   │           └ input : embedded observation and deterministic
 │   │           └ output : stochastic(posterior)
 │   │       └ RewardModel : A linear network to generate reward
-│   │         └ input : deterministic and stochastic 
+│   │         └ input : deterministic and stochastic
 │   │         └ output : reward
 │   │       └ ContinueModel : A linear network to generate continue flag(not done)
 │   │         └ input : deterministic and stochastic
@@ -136,3 +136,11 @@ All reported results were obtained by running the experiments 3 times with diffe
 * [https://github.com/yusukeurakami/dreamer-pytorch](https://github.com/yusukeurakami/dreamer-pytorch)
 * [Planning to Explore via Self-Supervised World Models](https://arxiv.org/abs/2005.05960)
 * [https://github.com/danijar/dreamerv2](https://github.com/danijar/dreamerv2)
+
+## Alive
+
+###
+
+$$
+G(\pi) = \sum_{t=1}^{\infty} \left[ \mathbb{E}_{q(o_{t+1}|s_{t+1}) q(s_{t+1}|s_t, a_t)} \left[ \ln \frac{q(s_{t+1}|o_{\le {t+1}}, a_{\le t})}{q(s_{t+1}|s_t, a_t)} \right] + \mathbb{E}_{q(r_{t+1}|s_{t+1}) q(s_{t+1}|s_t, a_t)} \ln p(r_{t+1}) \right]
+$$

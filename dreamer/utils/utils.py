@@ -1,9 +1,11 @@
-
 def attrdict_monkeypatch_fix():
     import collections
     import collections.abc
+
     for type_name in collections.abc.__all__:
-            setattr(collections, type_name, getattr(collections.abc, type_name))
+        setattr(collections, type_name, getattr(collections.abc, type_name))
+
+
 attrdict_monkeypatch_fix()
 
 import os
@@ -11,9 +13,9 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 import yaml
 from attrdict import AttrDict
+
 
 def horizontal_forward(network, x, y=None, input_shape=(-1,), output_shape=(-1,)):
     batch_with_horizon_shape = x.shape[: -len(input_shape)]
@@ -97,8 +99,7 @@ def compute_lambda_values(rewards, values, continues, horizon_length, device, la
     for index in reversed(range(horizon_length - 1)):
         last = inputs[:, index] + continues[:, index] * lambda_ * last
         outputs.append(last)
-    returns = torch.stack(list(reversed(outputs)), dim=1).to(device)
-    return returns
+    return torch.stack(list(reversed(outputs)), dim=1).to(device)
 
 
 class DynamicInfos:
@@ -114,10 +115,7 @@ class DynamicInfos:
 
     def get_stacked(self, time_axis=1):
         stacked_data = AttrDict(
-            {
-                key: torch.stack(self.data[key], dim=time_axis).to(self.device)
-                for key in self.data
-            }
+            {key: torch.stack(self.data[key], dim=time_axis).to(self.device) for key in self.data}
         )
         self.clear()
         return stacked_data
@@ -133,9 +131,7 @@ def find_file(file_name):
         if file_name in files:
             return os.path.join(root, file_name)
 
-    raise FileNotFoundError(
-        f"File '{file_name}' not found in subdirectories of {cur_dir}"
-    )
+    raise FileNotFoundError(f"File '{file_name}' not found in subdirectories of {cur_dir}")
 
 
 def get_base_directory():

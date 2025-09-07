@@ -2,9 +2,10 @@ from dreamer.utils.utils import attrdict_monkeypatch_fix
 
 attrdict_monkeypatch_fix()
 
-from attrdict import AttrDict
 import numpy as np
 import torch
+from attrdict import AttrDict
+
 
 class ReplayBuffer(object):
     def __init__(self, observation_shape, action_size, device, config):
@@ -14,12 +15,8 @@ class ReplayBuffer(object):
 
         state_type = np.uint8 if len(observation_shape) < 3 else np.float32
 
-        self.observation = np.empty(
-            (self.capacity, *observation_shape), dtype=state_type
-        )
-        self.next_observation = np.empty(
-            (self.capacity, *observation_shape), dtype=state_type
-        )
+        self.observation = np.empty((self.capacity, *observation_shape), dtype=state_type)
+        self.next_observation = np.empty((self.capacity, *observation_shape), dtype=state_type)
         self.action = np.empty((self.capacity, action_size), dtype=np.float32)
         self.reward = np.empty((self.capacity, 1), dtype=np.float32)
         self.done = np.empty((self.capacity, 1), dtype=np.float32)
@@ -55,9 +52,7 @@ class ReplayBuffer(object):
 
         sample_index = (sample_index + chunk_length) % self.capacity
 
-        observation = torch.as_tensor(
-            self.observation[sample_index], device=self.device
-        ).float()
+        observation = torch.as_tensor(self.observation[sample_index], device=self.device).float()
         next_observation = torch.as_tensor(
             self.next_observation[sample_index], device=self.device
         ).float()

@@ -2,19 +2,28 @@ import os
 
 os.environ["MUJOCO_GL"] = "egl"
 
-import argparse
+from dataclasses import dataclass
 from datetime import datetime
+
+import tyro
 from torch.utils.tensorboard import SummaryWriter
 
+from dreamer.algorithms.alivev0origin import AliveV0Origin
 from dreamer.algorithms.dreamer import Dreamer
 from dreamer.algorithms.plan2explore import Plan2Explore
-from dreamer.utils.utils import load_config, get_base_directory
-from dreamer.envs.envs import make_dmc_env, make_atari_env, get_env_infos
+from dreamer.envs.envs import get_env_infos, make_atari_env, make_dmc_env
+from dreamer.utils.utils import get_base_directory, load_config
 
 
-def main(config_file):
-    config = load_config(config_file)
+@dataclass
+class Args:
+    config_file: str = "dmc-walker-walk.yml"
+    disable_logger: bool = False
+    run_name: str = ""
 
+
+def main(args: Args):
+    config = load_config(args.config_file)
     if config.environment.benchmark == "atari":
         env = make_atari_env(
             task_name=config.environment.task_name,
@@ -36,6 +45,8 @@ def main(config_file):
             frame_skip=config.environment.frame_skip,
             pixel_norm=config.environment.pixel_norm,
         )
+    else:
+        raise ValueError(f"Unknown benchmark: {config.environment.benchmark}")
     obs_shape, discrete_action_bool, action_size = get_env_infos(env)
 
     log_dir = (
@@ -43,28 +54,31 @@ def main(config_file):
         + "/runs/"
         + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         + "_"
+        + config.algorithm
+        + "_"
         + config.operation.log_dir
+        + f"-{args.run_name}"
     )
-    writer = SummaryWriter(log_dir)
+    writer = None if args.disable_logger else SummaryWriter(log_dir)
     device = config.operation.device
 
-    if config.algorithm == "dreamer-v1":
-        agent = Dreamer(
-            obs_shape, discrete_action_bool, action_size, writer, device, config
-        )
-    elif config.algorithm == "plan2explore":
-        agent = Plan2Explore(
-            obs_shape, discrete_action_bool, action_size, writer, device, config
-        )
+    match config.algorithm:
+        case "dreamer-v1":
+            agent = Dreamer(obs_shape, discrete_action_bool, action_size, writer, device, config)
+        case "plan2explore":
+            agent = Plan2Explore(
+                obs_shape, discrete_action_bool, action_size, writer, device, config
+            )
+        case "alive-v0-origin":
+            agent = AliveV0Origin(
+                obs_shape, discrete_action_bool, action_size, writer, device, config
+            )
+        case _:
+            raise ValueError(f"Unknown algorithm: {config.algorithm}")
+
     agent.train(env)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--config",
-        type=str,
-        default="dmc-walker-walk.yml",
-        help="config file to run(default: dmc-walker-walk.yml)",
-    )
-    main(parser.parse_args().config)
+    args = tyro.cli(Args)
+    main(args)

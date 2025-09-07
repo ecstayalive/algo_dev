@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
 
-from dreamer.utils.utils import create_normal_dist, build_network, horizontal_forward
+from dreamer.utils.utils import build_network, create_normal_dist, horizontal_forward
 
 
 class RSSM(nn.Module):
@@ -13,12 +13,13 @@ class RSSM(nn.Module):
 
         self.recurrent_model = RecurrentModel(action_size, config)
         self.transition_model = TransitionModel(config)
+        self.transition_ensemble_model = TransitionEnsembleModel(5, config)
         self.representation_model = RepresentationModel(config)
 
     def recurrent_model_input_init(self, batch_size):
-        return self.transition_model.input_init(
+        return self.transition_model.input_init(batch_size), self.recurrent_model.input_init(
             batch_size
-        ), self.recurrent_model.input_init(batch_size)
+        )
 
 
 class RecurrentModel(nn.Module):
@@ -31,9 +32,7 @@ class RecurrentModel(nn.Module):
 
         self.activation = getattr(nn, self.config.activation)()
 
-        self.linear = nn.Linear(
-            self.stochastic_size + action_size, self.config.hidden_size
-        )
+        self.linear = nn.Linear(self.stochastic_size + action_size, self.config.hidden_size)
         self.recurrent = nn.GRUCell(self.config.hidden_size, self.deterministic_size)
 
     def forward(self, embedded_state, action, deterministic):
@@ -70,6 +69,41 @@ class TransitionModel(nn.Module):
 
     def input_init(self, batch_size):
         return torch.zeros(batch_size, self.stochastic_size).to(self.device)
+
+
+class TransitionEnsembleModel(nn.Module):
+    def __init__(self, k: int, config):
+        super().__init__()
+        self.k = k
+        self.config = config.parameters.dreamer.rssm.transition_model
+        self.device = config.operation.device
+        self.stochastic_size = config.parameters.dreamer.stochastic_size
+        self.deterministic_size = config.parameters.dreamer.deterministic_size
+
+        self.network = build_network(
+            self.deterministic_size,
+            self.config.hidden_size,
+            self.config.num_layers,
+            self.config.activation,
+            self.k * self.stochastic_size * 2,
+        )
+
+    def forward(self, h: torch.Tensor) -> Normal:
+        """
+        Args:
+            h (torch.Tensor): shape: (B, H_dim)
+
+        Returns:
+            torch.distributions.Normal: batch_shape: (K, B), event_shape: (S_dim)
+        """
+        B = h.shape[0]
+        network_out = self.network(h)
+        # (B, K, S_dim * 2)
+        reshaped_out = network_out.view(B, self.k, self.stochastic_size * 2)
+        # (K, B, S_dim * 2)
+        transposed_out = reshaped_out.permute(1, 0, 2)
+
+        return create_normal_dist(transposed_out, min_std=self.config.min_std)
 
 
 class RepresentationModel(nn.Module):
@@ -111,11 +145,8 @@ class RewardModel(nn.Module):
         )
 
     def forward(self, posterior, deterministic):
-        x = horizontal_forward(
-            self.network, posterior, deterministic, output_shape=(1,)
-        )
-        dist = create_normal_dist(x, std=1, event_shape=1)
-        return dist
+        x = horizontal_forward(self.network, posterior, deterministic, output_shape=(1,))
+        return create_normal_dist(x, std=1, event_shape=1)
 
 
 class ContinueModel(nn.Module):
@@ -134,8 +165,5 @@ class ContinueModel(nn.Module):
         )
 
     def forward(self, posterior, deterministic):
-        x = horizontal_forward(
-            self.network, posterior, deterministic, output_shape=(1,)
-        )
-        dist = torch.distributions.Bernoulli(logits=x)
-        return dist
+        x = horizontal_forward(self.network, posterior, deterministic, output_shape=(1,))
+        return torch.distributions.Bernoulli(logits=x)

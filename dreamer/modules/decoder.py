@@ -1,9 +1,9 @@
 import torch.nn as nn
 
 from dreamer.utils.utils import (
-    initialize_weights,
-    horizontal_forward,
     create_normal_dist,
+    horizontal_forward,
+    initialize_weights,
 )
 
 
@@ -18,9 +18,7 @@ class Decoder(nn.Module):
         self.observation_shape = observation_shape
 
         self.network = nn.Sequential(
-            nn.Linear(
-                self.deterministic_size + self.stochastic_size, self.config.depth * 32
-            ),
+            nn.Linear(self.deterministic_size + self.stochastic_size, self.config.depth * 32),
             nn.Unflatten(1, (self.config.depth * 32, 1)),
             nn.Unflatten(2, (1, 1)),
             nn.ConvTranspose2d(
@@ -57,5 +55,4 @@ class Decoder(nn.Module):
         x = horizontal_forward(
             self.network, posterior, deterministic, output_shape=self.observation_shape
         )
-        dist = create_normal_dist(x, std=1, event_shape=len(self.observation_shape))
-        return dist
+        return create_normal_dist(x, std=1, event_shape=len(self.observation_shape))

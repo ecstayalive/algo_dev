@@ -1,17 +1,13 @@
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
 
 from dreamer.algorithms.dreamer import Dreamer
-from dreamer.modules.actor import Actor
-from dreamer.modules.critic import Critic
+from dreamer.modules.actor import HabitActor
+from dreamer.modules.critic import CriticV
 from dreamer.modules.one_step_model import OneStepModel
-from dreamer.utils.utils import (
-    compute_lambda_values,
-    create_normal_dist,
-    DynamicInfos,
-)
 from dreamer.utils.buffer import ReplayBuffer
+from dreamer.utils.utils import DynamicInfos, compute_lambda_values, create_normal_dist
 
 
 class Plan2Explore(Dreamer):
@@ -29,10 +25,8 @@ class Plan2Explore(Dreamer):
         )
         self.config = self.config + config.parameters.plan2explore
 
-        self.intrinsic_actor = Actor(discrete_action_bool, action_size, config).to(
-            self.device
-        )
-        self.intrinsic_critic = Critic(config).to(self.device)
+        self.intrinsic_actor = HabitActor(discrete_action_bool, action_size, config).to(self.device)
+        self.intrinsic_critic = CriticV(config).to(self.device)
 
         self.one_step_models = [
             OneStepModel(action_size, config).to(self.device)
@@ -55,15 +49,11 @@ class Plan2Explore(Dreamer):
 
     def train(self, env):
         if len(self.buffer) < 1:
-            self.environment_interaction(
-                self.intrinsic_actor, env, self.config.seed_episodes
-            )
+            self.environment_interaction(self.intrinsic_actor, env, self.config.seed_episodes)
 
         for iteration in range(self.config.train_iterations):
             for collect_interval in range(self.config.collect_interval):
-                data = self.buffer.sample(
-                    self.config.batch_size, self.config.batch_length
-                )
+                data = self.buffer.sample(self.config.batch_size, self.config.batch_length)
                 posteriors, deterministics = self.dynamic_learning(data)
                 self.behavior_learning(
                     self.actor,
@@ -97,9 +87,7 @@ class Plan2Explore(Dreamer):
         data.embedded_observation = self.encoder(data.observation)
 
         for t in range(1, self.config.batch_length):
-            deterministic = self.rssm.recurrent_model(
-                prior, data.action[:, t - 1], deterministic
-            )
+            deterministic = self.rssm.recurrent_model(prior, data.action[:, t - 1], deterministic)
             prior_dist, prior = self.rssm.transition_model(deterministic)
             posterior_dist, posterior = self.rssm.representation_model(
                 data.embedded_observation[:, t], deterministic
@@ -132,9 +120,7 @@ class Plan2Explore(Dreamer):
             continue_dist = self.continue_predictor(
                 posterior_info.posteriors, posterior_info.deterministics
             )
-            continue_loss = self.continue_criterion(
-                continue_dist.probs, 1 - data.done[:, 1:]
-            )
+            continue_loss = self.continue_criterion(continue_dist.probs, 1 - data.done[:, 1:])
 
         reward_dist = self.reward_predictor(
             posterior_info.posteriors.detach(), posterior_info.deterministics.detach()
@@ -191,9 +177,7 @@ class Plan2Explore(Dreamer):
 
         self.one_step_models_optimizer.zero_grad()
         one_step_model_loss.backward()
-        self.writer.add_scalar(
-            "one step model loss", one_step_model_loss, self.num_total_episode
-        )
+        self.writer.add_scalar("one step model loss", one_step_model_loss, self.num_total_episode)
         nn.utils.clip_grad_norm_(
             self.one_step_models_params,
             self.config.clip_grad,
@@ -241,16 +225,13 @@ class Plan2Explore(Dreamer):
                 for x in self.one_step_models
             ]
             predicted_feature_mean_stds = torch.stack(predicted_feature_means, 0).std(0)
-
             predicted_rewards = predicted_feature_mean_stds.mean(-1, keepdims=True)
 
         else:
             predicted_rewards = self.reward_predictor(
                 behavior_learning_infos.priors, behavior_learning_infos.deterministics
             ).mean
-        values = critic(
-            behavior_learning_infos.priors, behavior_learning_infos.deterministics
-        ).mean
+        values = critic(behavior_learning_infos.priors, behavior_learning_infos.deterministics).mean
 
         if self.config.use_continue_flag:
             continues = self.continue_predictor(
@@ -310,13 +291,9 @@ class Plan2Explore(Dreamer):
             done = False
 
             while not done:
-                deterministic = self.rssm.recurrent_model(
-                    posterior, action, deterministic
-                )
+                deterministic = self.rssm.recurrent_model(posterior, action, deterministic)
                 embedded_observation = embedded_observation.reshape(1, -1)
-                _, posterior = self.rssm.representation_model(
-                    embedded_observation, deterministic
-                )
+                _, posterior = self.rssm.representation_model(embedded_observation, deterministic)
                 action = actor(posterior, deterministic).detach()
 
                 if self.discrete_action_bool:
@@ -329,9 +306,7 @@ class Plan2Explore(Dreamer):
 
                 next_observation, reward, done, info = env.step(env_action)
                 if train:
-                    self.buffer.add(
-                        observation, buffer_action, reward, next_observation, done
-                    )
+                    self.buffer.add(observation, buffer_action, reward, next_observation, done)
                 score += reward
                 embedded_observation = self.encoder(
                     torch.from_numpy(next_observation).float().to(self.device)
@@ -340,9 +315,7 @@ class Plan2Explore(Dreamer):
                 if done:
                     if train:
                         self.num_total_episode += 1
-                        self.writer.add_scalar(
-                            "training score", score, self.num_total_episode
-                        )
+                        self.writer.add_scalar("training score", score, self.num_total_episode)
                     else:
                         score_lst = np.append(score_lst, score)
                     break
