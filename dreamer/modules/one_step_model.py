@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
 
-from dreamer.utils.utils import create_normal_dist, build_network, horizontal_forward
+from dreamer.utils.utils import build_network, create_normal_dist, horizontal_forward
 
 
 class OneStepModel(nn.Module):

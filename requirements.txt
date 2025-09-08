@@ -2,7 +2,5 @@ dm-control==1.0.31
 gymnasium==1.2.0
 hydra-core==1.3.2
 mujoco==3.3.4
-torch
-torchvision
-torchvision-extra-decoders
 tyro==0.9.27
+mamba_ssm==2.2.5

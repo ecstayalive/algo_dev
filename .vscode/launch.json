@@ -10,7 +10,11 @@
             "request": "launch",
             "program": "main.py",
             "console": "integratedTerminal",
-            "args": ["--disable-logger"]
+            "args": [
+                "--disable-logger",
+                "--algorithm",
+                "alive-v0-mamba"
+            ]
         }
     ]
 }

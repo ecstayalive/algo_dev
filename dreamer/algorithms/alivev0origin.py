@@ -153,7 +153,7 @@ class AliveV0Origin:
             -1
         )
         reward_dist = self.reward_predictor(infos.posteriors, infos.deterministics)
-        reward_loss = reward_dist.log_prob(data.reward[:, 1:] + 0.05 * kl_divergence)
+        reward_loss = reward_dist.log_prob(data.reward[:, 1:] + 0.05 * kl_divergence.detach())
         kl_divergence_loss = torch.max(
             torch.tensor(self.config.free_nats).to(self.device), kl_divergence
         ).mean()
@@ -226,9 +226,9 @@ class AliveV0Origin:
             self.device,
             self.config.lambda_,
         )
-        # advantage: torch.Tensor = lambda_values - values[:, :-1].detach()
         actor_loss = -torch.mean(lambda_values)
-        # actor_loss = -torch.mean(behavior_learning_infos.action_log_probs[:, :-1] * advantage)
+        # advantage: torch.Tensor = lambda_values - values[:, :-1].detach()
+        # actor_loss = -torch.mean(infos.action_log_probs[:, :-1] * advantage)
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         nn.utils.clip_grad_norm_(
@@ -281,29 +281,6 @@ class AliveV0Origin:
                 self.writer.add_scalar(
                     "value/continue", continues.mean().item(), global_step=self.num_total_episode
                 )
-
-    def search_state(
-        self,
-        state: torch.Tensor,
-        deterministic: torch.Tensor,
-        step: int = 10,
-        lr=0.001,
-        eps: float = 0.01,
-    ):
-        """
-        TODO:
-            1. Add reachability constraint to the state space
-            2. Use diffusion process to search for valid state
-        """
-        ...
-
-    def soft_update(self, target: CriticQ, source: CriticQ, tau: float = 0.005):
-        """
-        target <- (1 - tau) * target + tau * source
-        """
-        with torch.no_grad():
-            for tp, sp in zip(target.parameters(), source.parameters()):
-                tp.data.copy_(tp.data * (1.0 - tau) + sp.data * tau)
 
     @torch.no_grad()
     def environment_interaction(self, env, num_interaction_episodes, train=True):
@@ -362,3 +339,26 @@ class AliveV0Origin:
         This replaces your old `search_and_act` but is used only at runtime.
         """
         ...
+
+    def search_state(
+        self,
+        state: torch.Tensor,
+        deterministic: torch.Tensor,
+        step: int = 10,
+        lr=0.001,
+        eps: float = 0.01,
+    ):
+        """
+        TODO:
+            1. Add reachability constraint to the state space
+            2. Use diffusion process to search for valid state
+        """
+        ...
+
+    def soft_update(self, target: CriticQ, source: CriticQ, tau: float = 0.005):
+        """
+        target <- (1 - tau) * target + tau * source
+        """
+        with torch.no_grad():
+            for tp, sp in zip(target.parameters(), source.parameters()):
+                tp.data.copy_(tp.data * (1.0 - tau) + sp.data * tau)

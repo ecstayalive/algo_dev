@@ -21,43 +21,43 @@ parameters :
         num_interaction_episodes : 1
         seed_episodes : 5
         num_evaluate : 3
-        
+
         kl_divergence_scale : 1
         free_nats : 3
         discount : 0.99
         lambda_ : 0.95
-        
+
         use_continue_flag : False
         actor_learning_rate : 0.00004
         critic_learning_rate : 0.0001
         model_learning_rate : 0.0002
         grad_norm_type : 2
         clip_grad : 100
-        
+
         deterministic_size : 600
         stochastic_size : 600
         embedded_state_size : 1024
         buffer :
             capacity : 5000000
-        
-        encoder : 
+
+        encoder :
             depth : 32
             stride : 2
             kernel_size : 4
             activation : ReLU
 
-        decoder : 
+        decoder :
             depth : 32
             stride : 2
             kernel_size : 5
             activation : ReLU
 
         rssm :
-            recurrent_model : 
+            recurrent_model :
                 hidden_size : 200
                 activation : ELU
 
-            transition_model : 
+            transition_model :
                 hidden_size : 200
                 num_layers : 2
                 activation : ELU
@@ -68,7 +68,7 @@ parameters :
                 num_layers : 2
                 activation : ELU
                 min_std : 0.1
-            
+
         reward :
             hidden_size : 400
             num_layers : 2
@@ -78,7 +78,7 @@ parameters :
             hidden_size : 400
             num_layers : 3
             activation : ELU
-        
+
         agent :
             actor :
                 hidden_size : 400
@@ -88,7 +88,7 @@ parameters :
                 activation : ELU
                 num_layers : 2
 
-            critic : 
+            critic :
                 hidden_size : 400
                 activation : ELU
-                num_layers : 3 
+                num_layers : 3

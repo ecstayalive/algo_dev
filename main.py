@@ -4,6 +4,7 @@ os.environ["MUJOCO_GL"] = "egl"
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 import tyro
 from torch.utils.tensorboard import SummaryWriter
@@ -18,6 +19,9 @@ from dreamer.utils.utils import get_base_directory, load_config
 @dataclass
 class Args:
     config_file: str = "dmc-walker-walk.yml"
+    algorithm: Literal["dreamer-v1", "plan2explore", "alive-v0-origin", "alive-v0-mamba"] = (
+        "alive-v0-origin"
+    )
     disable_logger: bool = False
     run_name: str = ""
 
@@ -49,6 +53,7 @@ def main(args: Args):
         raise ValueError(f"Unknown benchmark: {config.environment.benchmark}")
     obs_shape, discrete_action_bool, action_size = get_env_infos(env)
 
+    config.algorithm = args.algorithm
     log_dir = (
         get_base_directory()
         + "/runs/"
@@ -64,15 +69,27 @@ def main(args: Args):
 
     match config.algorithm:
         case "dreamer-v1":
+            print("Training DreamerV1")
             agent = Dreamer(obs_shape, discrete_action_bool, action_size, writer, device, config)
         case "plan2explore":
+            print("Training Plan2Explore")
             agent = Plan2Explore(
                 obs_shape, discrete_action_bool, action_size, writer, device, config
             )
         case "alive-v0-origin":
+            print("Training AliveV0Origin")
             agent = AliveV0Origin(
                 obs_shape, discrete_action_bool, action_size, writer, device, config
             )
+        case "alive-v0-mamba":
+            print("Training AliveV0Mamba")
+            from dreamer.algorithms.alivev0mamba import AliveV0Mamba
+
+            agent = AliveV0Mamba(
+                obs_shape, discrete_action_bool, action_size, writer, device, config
+            )
+        case "alive-v0-ensemble":
+            ...
         case _:
             raise ValueError(f"Unknown algorithm: {config.algorithm}")
 

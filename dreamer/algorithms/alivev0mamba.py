@@ -11,6 +11,7 @@ from dreamer.modules.critic import CriticQ, CriticV
 from dreamer.modules.decoder import Decoder
 from dreamer.modules.encoder import Encoder
 from dreamer.modules.model import RSSM, ContinueModel, RewardModel
+from dreamer.modules.world_model import WorldModel, WorldModelInfos
 from dreamer.utils.buffer import ReplayBuffer
 from dreamer.utils.distribution import calculate_information_gain_proxy
 from dreamer.utils.utils import DynamicInfos, compute_lambda_values, create_normal_dist
@@ -37,7 +38,7 @@ class AliveV0Mamba:
 
         self.encoder = Encoder(observation_shape, config).to(self.device)
         self.decoder = Decoder(observation_shape, config).to(self.device)
-        self.rssm = RSSM(action_size, config).to(self.device)
+        self.world_model = WorldModel(action_size, config).to(self.device)
         self.reward_predictor = RewardModel(config).to(self.device)
         if config.parameters.dreamer.use_continue_flag:
             self.continue_predictor = ContinueModel(config).to(self.device)
@@ -50,7 +51,7 @@ class AliveV0Mamba:
         self.model_params = itertools.chain(
             self.encoder.parameters(),
             self.decoder.parameters(),
-            self.rssm.parameters(),
+            self.world_model.parameters(),
             self.reward_predictor.parameters(),
         )
         if self.config.use_continue_flag:
@@ -92,8 +93,8 @@ class AliveV0Mamba:
             for _ in range(self.config.train_iterations):
                 for _ in range(self.config.collect_interval):
                     data = self.buffer.sample(self.config.batch_size, self.config.batch_length)
-                    world_model_infos = self.dynamic_learning(data)
-                    self.behavior_learning(data, world_model_infos)
+                    infos = self.dynamic_learning(data)
+                    self.behavior_learning(data, infos)
                     progress.update(train_task, advance=1 / self.config.collect_interval)
                 self.environment_interaction(env, self.config.num_interaction_episodes)
                 self.evaluate(env)
@@ -101,65 +102,33 @@ class AliveV0Mamba:
     def evaluate(self, env):
         self.environment_interaction(env, self.config.num_evaluate, train=False)
 
-    def dynamic_learning(self, data):
-        prior, deterministic = self.rssm.recurrent_model_input_init(len(data.action))
-        prior = self.world_model.state0(len(data.action))
+    def dynamic_learning(self, data) -> WorldModelInfos:
+        prior, _ = self.world_model.state0_dist(len(data.action))
         data.embedded_observation = self.encoder(data.observation)
-        for t in range(1, self.config.batch_length):
-            deterministic = self.rssm.recurrent_model(prior, data.action[:, t - 1], deterministic)
-            prior_dist, prior = self.rssm.transition_model(deterministic)
-            posterior_dist, posterior = self.rssm.representation_model(
-                data.embedded_observation[:, t], deterministic
-            )
-            # ensemble_prior_dist = self.rssm.transition_ensemble_model(deterministic)
-            self.dynamic_learning_infos.append(
-                priors=prior,
-                prior_dist_means=prior_dist.mean,
-                prior_dist_stds=prior_dist.scale,
-                # ensemble_prior_dist_means=ensemble_prior_dist.mean,
-                # ensemble_prior_dist_stds=ensemble_prior_dist.scale,
-                posteriors=posterior,
-                posterior_dist_means=posterior_dist.mean,
-                posterior_dist_stds=posterior_dist.scale,
-                deterministics=deterministic,
-            )
-            prior = posterior
-
-        infos = self.dynamic_learning_infos.get_stacked()
-        # infos.ensemble_prior_dist_means = infos.ensemble_prior_dist_means.transpose(1, 2)
-        # infos.ensemble_prior_dist_stds = infos.ensemble_prior_dist_stds.transpose(1, 2)
+        infos: WorldModelInfos = self.world_model(
+            data.action[:, :-1], prior, data.embedded_observation[:, 1:]
+        )
         self._model_update(data, infos)
         return infos
 
-    def _model_update(self, data: dict, infos: dict):
-        reconstructed_observation_dist = self.decoder(infos.z_post, infos.H1)
+    def _model_update(self, data: dict, infos: WorldModelInfos):
+        reconstructed_observation_dist = self.decoder(infos.post, infos.hidden)
         reconstruction_observation_loss = reconstructed_observation_dist.log_prob(
             data.observation[:, 1:]
         )
         if self.config.use_continue_flag:
-            continue_dist = self.continue_predictor(infos.z_post, infos.H1)
+            continue_dist = self.continue_predictor(infos.post, infos.hidden)
             continue_loss = self.continue_criterion(continue_dist.probs, 1 - data.done[:, 1:])
-
         prior_dist = create_normal_dist(infos.mu_p, infos.std_p, event_shape=1)
-        # ensemble_prior_dist = create_normal_dist(
-        # infos.ensemble_prior_dist_means,
-        # infos.ensemble_prior_dist_stds,
-        # event_shape=1,
-        # )
         posterior_dist = create_normal_dist(infos.mu_q, infos.std_q, event_shape=1)
-        # kl_divs = torch.distributions.kl.kl_divergence(posterior_dist, ensemble_prior_dist)
-        # with torch.no_grad():
-        #     # Mask shape will be (K, B, T), matching kl_divs
-        #     mask = torch.distributions.Bernoulli(0.5).sample(kl_divs.shape).to(self.device)
-        #     # Ensure every data point is used by at least one head
-        #     mask[0, :, :] = 1.0
-        kl_divs = torch.distributions.kl.kl_divergence(posterior_dist, prior_dist)
-        reward_dist = self.reward_predictor(infos.z_post, infos.H1)
+        kl_divergence = torch.distributions.kl.kl_divergence(posterior_dist, prior_dist).unsqueeze(
+            -1
+        )
+        reward_dist = self.reward_predictor(infos.post, infos.hidden)
         reward_loss = reward_dist.log_prob(data.reward[:, 1:])
-        # reward_loss = reward_dist.log_prob(data.reward[:, 1:] + 0.05 * kl_divs.unsqueeze(-1))
-        # kl_divergence_loss = ((kl_divs * mask).clamp_min(self.config.free_nats)).sum() / mask.sum().clamp_min(1.0)
+        # reward_loss = reward_dist.log_prob(data.reward[:, 1:] + 0.05 * kl_divergence.detach())
         kl_divergence_loss = torch.max(
-            torch.tensor(self.config.free_nats).to(self.device), kl_divs
+            torch.tensor(self.config.free_nats).to(self.device), kl_divergence
         ).mean()
         model_loss = (
             self.config.kl_divergence_scale * kl_divergence_loss
@@ -168,7 +137,6 @@ class AliveV0Mamba:
         )
         if self.config.use_continue_flag:
             model_loss += continue_loss.mean()
-
         self.model_optimizer.zero_grad()
         model_loss.backward()
         nn.utils.clip_grad_norm_(
@@ -190,26 +158,20 @@ class AliveV0Mamba:
                 "loss/reward_loss", -reward_loss.mean().item(), global_step=self.num_total_episode
             )
 
-    def behavior_learning(self, data, world_model_infos: WorldModelInfos):
+    def behavior_learning(self, data, infos: WorldModelInfos):
         """
         TODO: last posterior truncation(last can be last step)
         posterior shape : (batch, timestep, stochastic)
         """
-        state = world_model_infos.z_post.reshape(-1, self.config.stochastic_size).detach()
-        deterministic = world_model_infos.H1.reshape(-1, self.config.deterministic_size).detach()
-        # continue_predictor reinit
+        state = infos.post.reshape(-1, self.config.stochastic_size).detach()
+        deterministic = infos.hidden.reshape(-1, self.config.deterministic_size).detach()
         for _ in range(self.config.horizon_length):
-            # action = self.select_action(state, deterministic)
             ori_action, ori_dist = self.actor(state, deterministic, True, False)
             action_log_prob = self.actor.log_prob(
                 ori_dist.mean, ori_dist.scale, ori_action, squashing=True
             )
             action = ori_action.tanh()
-            state_mu, state_std, deterministic = self.world_model.imagine(action, state, None)
-            state = (state_mu + torch.randn_like(state_mu) * state_std).squeeze(1)
-            deterministic = deterministic.squeeze(1)
-            # ensemble_prior_dist = self.rssm.transition_ensemble_model(deterministic)
-            # state = ensemble_prior_dist.rsample()[0]
+            state, state_mu, state_std, deterministic = self.world_model.imagine(action, state)
             self.behavior_learning_infos.append(
                 priors=state,
                 actions=action,
@@ -217,33 +179,15 @@ class AliveV0Mamba:
                 deterministics=deterministic,
                 prior_dist_means=state_mu.squeeze(1),
                 prior_dist_stds=state_std.squeeze(1),
-                # ensemble_prior_dist_means=ensemble_prior_dist.mean,
-                # ensemble_prior_dist_stds=ensemble_prior_dist.scale,
             )
         imagine_infos = self.behavior_learning_infos.get_stacked()
-        # imagine_infos.ensemble_prior_dist_means = imagine_infos.ensemble_prior_dist_means.transpose(
-        #     1, 2
-        # )
-        # imagine_infos.ensemble_prior_dist_stds = imagine_infos.ensemble_prior_dist_stds.transpose(
-        #     1, 2
-        # )
         self._update_agent(imagine_infos)
 
     def _update_agent(self, behavior_learning_infos):
-        # pragmatic_value = self.reward_predictor(
-        #     behavior_learning_infos.priors, behavior_learning_infos.deterministics
-        # ).mean
-        # epistemic_value = calculate_information_gain_proxy(
-        #     behavior_learning_infos.ensemble_prior_dist_means,
-        #     behavior_learning_infos.ensemble_prior_dist_stds.pow(2).log(),
-        # ).unsqueeze(
-        #     -1
-        # )  # (B*T, H, 1)
-        # neg_expected_free_energy = pragmatic_value + epistemic_value
         values = self.critic_v(
             behavior_learning_infos.priors, behavior_learning_infos.deterministics
         ).mean
-        neg_expected_free_energy = self.reward_predictor(
+        neg_efp = self.reward_predictor(
             behavior_learning_infos.priors, behavior_learning_infos.deterministics
         ).mean
         if self.config.use_continue_flag:
@@ -254,7 +198,7 @@ class AliveV0Mamba:
             continues = self.config.discount * torch.ones_like(values)
 
         lambda_values = compute_lambda_values(
-            neg_expected_free_energy,
+            neg_efp,
             values,
             continues,
             self.config.horizon_length,
@@ -301,7 +245,7 @@ class AliveV0Mamba:
             # )
             self.writer.add_scalar(
                 "value/neg_expected_free_energy",
-                neg_expected_free_energy.mean().item(),
+                neg_efp.mean().item(),
                 global_step=self.num_total_episode,
             )
             self.writer.add_scalar(
@@ -343,9 +287,7 @@ class AliveV0Mamba:
     @torch.no_grad()
     def environment_interaction(self, env, num_interaction_episodes, train=True):
         for _ in range(num_interaction_episodes):
-            # posterior, deterministic = self.rssm.recurrent_model_input_init(1)
-            # posterior, deterministic = self.world_model.latent0(1)
-            posterior = self.world_model.state0(1)
+            posterior, _ = self.world_model.state0_dist(1)
             action = torch.zeros(1, self.action_size).to(self.device)
             observation = env.reset()
             embedded_observation = self.encoder(
@@ -356,24 +298,16 @@ class AliveV0Mamba:
             done = False
 
             while not done:
-                world_model_returns: WorldModelInfos = self.world_model(
-                    action.unsqueeze(1), posterior, embedded_observation.unsqueeze(1)
+                posterior, deterministic = self.world_model.step(
+                    action, posterior, embedded_observation
                 )
-                posterior = world_model_returns.z_post.squeeze(1)
-                embedded_observation = embedded_observation.reshape(1, 1, -1)
-                action = (
-                    self.actor(world_model_returns.z_post, world_model_returns.H1)
-                    .squeeze(1)
-                    .detach()
-                )
+                action = self.actor(posterior, deterministic).squeeze(1).detach()
                 if self.discrete_action_bool:
                     buffer_action = action.cpu().numpy()
                     env_action = buffer_action.argmax()
-
                 else:
-                    buffer_action = action.cpu().numpy()[0]
+                    buffer_action = action.cpu().numpy().squeeze()
                     env_action = buffer_action
-
                 next_observation, reward, done, truncated, info = env.step(env_action)
                 if train:
                     self.buffer.add(observation, buffer_action, reward, next_observation, done)

@@ -150,12 +150,10 @@ class Dreamer:
             posterior_info.posterior_dist_stds,
             event_shape=1,
         )
-        kl_divergence_loss = torch.mean(
-            torch.distributions.kl.kl_divergence(posterior_dist, prior_dist)
-        )
+        kl_divergence = torch.distributions.kl.kl_divergence(posterior_dist, prior_dist)
         kl_divergence_loss = torch.max(
-            torch.tensor(self.config.free_nats).to(self.device), kl_divergence_loss
-        )
+            torch.tensor(self.config.free_nats).to(self.device), kl_divergence
+        ).mean()
         model_loss = (
             self.config.kl_divergence_scale * kl_divergence_loss
             - reconstruction_observation_loss.mean()

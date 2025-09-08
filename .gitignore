@@ -2,3 +2,4 @@
 venv
 runs
 __pycache__
+settings.json

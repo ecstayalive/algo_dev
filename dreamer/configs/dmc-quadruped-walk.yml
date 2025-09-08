@@ -38,8 +38,8 @@ parameters:
     grad_norm_type: 2
     clip_grad: 100
 
-    deterministic_size: 200
-    stochastic_size: 30
+    deterministic_size: 256
+    stochastic_size: 32
     embedded_state_size: 1024
     buffer:
       capacity: 5000000
