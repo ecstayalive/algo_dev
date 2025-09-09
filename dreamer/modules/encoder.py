@@ -1,10 +1,7 @@
 import torch
 import torch.nn as nn
 
-from dreamer.utils.utils import (
-    initialize_weights,
-    horizontal_forward,
-)
+from dreamer.utils.utils import horizontal_forward, initialize_weights
 
 
 class Encoder(nn.Module):

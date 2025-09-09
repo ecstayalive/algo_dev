@@ -11,13 +11,23 @@ from dreamer.modules.critic import CriticQ, CriticV
 from dreamer.modules.decoder import Decoder
 from dreamer.modules.encoder import Encoder
 from dreamer.modules.model import RSSM, ContinueModel, RewardModel
-from dreamer.modules.world_model import WorldModel, WorldModelInfos
 from dreamer.utils.buffer import ReplayBuffer
 from dreamer.utils.distribution import calculate_information_gain_proxy
 from dreamer.utils.utils import DynamicInfos, compute_lambda_values, create_normal_dist
 
 
-class AliveV0Mamba:
+def attrdict_monkeypatch_fix():
+    import collections
+    import collections.abc
+
+    for type_name in collections.abc.__all__:
+        setattr(collections, type_name, getattr(collections.abc, type_name))
+
+
+from attrdict import AttrDict
+
+
+class AliveV0Pc:
     """
     A new reinforcement learning algorithm.
     Now we testing its theory and implementation.
@@ -38,8 +48,8 @@ class AliveV0Mamba:
 
         self.encoder = Encoder(observation_shape, config).to(self.device)
         self.decoder = Decoder(observation_shape, config).to(self.device)
-        self.world_model = WorldModel(action_size, config).to(self.device)
-        self.reward_predictor = RewardModel(config).to(self.device)
+        self.rssm = RSSM(action_size, config).to(self.device)
+        self.one_step_efe = RewardModel(config).to(self.device)
         if config.parameters.dreamer.use_continue_flag:
             self.continue_predictor = ContinueModel(config).to(self.device)
         self.actor = HabitActor(discrete_action_bool, action_size, config).to(self.device)
@@ -51,8 +61,8 @@ class AliveV0Mamba:
         self.model_params = itertools.chain(
             self.encoder.parameters(),
             self.decoder.parameters(),
-            self.world_model.parameters(),
-            self.reward_predictor.parameters(),
+            self.rssm.parameters(),
+            self.one_step_efe.parameters(),
         )
         if self.config.use_continue_flag:
             self.model_params += list(self.continue_predictor.parameters())
@@ -102,31 +112,48 @@ class AliveV0Mamba:
     def evaluate(self, env):
         self.environment_interaction(env, self.config.num_evaluate, train=False)
 
-    def dynamic_learning(self, data) -> WorldModelInfos:
-        prior, _ = self.world_model.state0_dist(len(data.action))
+    def dynamic_learning(self, data):
+        prior, deterministic = self.rssm.recurrent_model_input_init(len(data.action))
         data.embedded_observation = self.encoder(data.observation)
-        infos: WorldModelInfos = self.world_model(
-            data.action[:, :-1], prior, data.embedded_observation[:, 1:]
-        )
+        for t in range(1, self.config.batch_length):
+            deterministic = self.rssm.recurrent_model(prior, data.action[:, t - 1], deterministic)
+            prior_dist, prior = self.rssm.transition_model(deterministic)
+            posterior_dist, posterior = self.rssm.representation_model(
+                data.embedded_observation[:, t], deterministic
+            )
+            self.dynamic_learning_infos.append(
+                priors=prior,
+                prior_dist_means=prior_dist.mean,
+                prior_dist_stds=prior_dist.scale,
+                posteriors=posterior,
+                posterior_dist_means=posterior_dist.mean,
+                posterior_dist_stds=posterior_dist.scale,
+                deterministics=deterministic,
+            )
+            prior = posterior
+        infos = self.dynamic_learning_infos.get_stacked()
         self._model_update(data, infos)
         return infos
 
-    def _model_update(self, data: dict, infos: WorldModelInfos):
-        reconstructed_observation_dist = self.decoder(infos.post, infos.hidden)
+    def _model_update(self, data: dict, infos):
+        reconstructed_observation_dist = self.decoder(infos.posteriors, infos.deterministics)
         reconstruction_observation_loss = reconstructed_observation_dist.log_prob(
             data.observation[:, 1:]
         )
         if self.config.use_continue_flag:
-            continue_dist = self.continue_predictor(infos.post, infos.hidden)
+            continue_dist = self.continue_predictor(infos.posteriors, infos.deterministics)
             continue_loss = self.continue_criterion(continue_dist.probs, 1 - data.done[:, 1:])
-        prior_dist = create_normal_dist(infos.mu_p, infos.std_p, event_shape=1)
-        posterior_dist = create_normal_dist(infos.mu_q, infos.std_q, event_shape=1)
+        prior_dist = create_normal_dist(
+            infos.prior_dist_means, infos.prior_dist_stds, event_shape=1
+        )
+        posterior_dist = create_normal_dist(
+            infos.posterior_dist_means, infos.posterior_dist_stds, event_shape=1
+        )
         kl_divergence = torch.distributions.kl.kl_divergence(posterior_dist, prior_dist).unsqueeze(
             -1
         )
-        reward_dist = self.reward_predictor(infos.post, infos.hidden)
-        reward_loss = reward_dist.log_prob(data.reward[:, 1:])
-        # reward_loss = reward_dist.log_prob(data.reward[:, 1:] + 0.05 * kl_divergence.detach())
+        reward_dist = self.one_step_efe(infos.posteriors, infos.deterministics)
+        reward_loss = reward_dist.log_prob(data.reward[:, 1:] + 0.1 * kl_divergence.detach())
         kl_divergence_loss = torch.max(
             torch.tensor(self.config.free_nats).to(self.device), kl_divergence
         ).mean()
@@ -150,6 +177,29 @@ class AliveV0Mamba:
                 "loss/kl_div_loss", kl_divergence_loss.item(), global_step=self.num_total_episode
             )
             self.writer.add_scalar(
+                "value/kl_div", kl_divergence.mean().item(), global_step=self.num_total_episode
+            )
+            self.writer.add_scalar(
+                "value/prior_mean",
+                infos.prior_dist_means.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
+                "value/prior_std",
+                infos.prior_dist_stds.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
+                "value/posterior_mean",
+                infos.posterior_dist_means.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
+                "value/posterior_std",
+                infos.posterior_dist_stds.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
                 "loss/reconstruction_loss",
                 -reconstruction_observation_loss.mean().item(),
                 global_step=self.num_total_episode,
@@ -158,56 +208,50 @@ class AliveV0Mamba:
                 "loss/reward_loss", -reward_loss.mean().item(), global_step=self.num_total_episode
             )
 
-    def behavior_learning(self, data, infos: WorldModelInfos):
+    def behavior_learning(self, data, infos):
         """
         TODO: last posterior truncation(last can be last step)
         posterior shape : (batch, timestep, stochastic)
         """
-        state = infos.post.reshape(-1, self.config.stochastic_size).detach()
-        deterministic = infos.hidden.reshape(-1, self.config.deterministic_size).detach()
+        state = infos.posteriors.reshape(-1, self.config.stochastic_size).detach()
+        deterministic = infos.deterministics.reshape(-1, self.config.deterministic_size).detach()
+        # continue_predictor reinit
         for _ in range(self.config.horizon_length):
             ori_action, ori_dist = self.actor(state, deterministic, True, False)
             action_log_prob = self.actor.log_prob(
                 ori_dist.mean, ori_dist.scale, ori_action, squashing=True
             )
             action = ori_action.tanh()
-            state, state_mu, state_std, deterministic = self.world_model.imagine(action, state)
+            deterministic = self.rssm.recurrent_model(state, action, deterministic)
+            _, state = self.rssm.transition_model(deterministic)
             self.behavior_learning_infos.append(
                 priors=state,
                 actions=action,
                 action_log_probs=action_log_prob.sum(dim=-1, keepdim=True),
                 deterministics=deterministic,
-                prior_dist_means=state_mu.squeeze(1),
-                prior_dist_stds=state_std.squeeze(1),
             )
         imagine_infos = self.behavior_learning_infos.get_stacked()
         self._update_agent(imagine_infos)
 
-    def _update_agent(self, behavior_learning_infos):
-        values = self.critic_v(
-            behavior_learning_infos.priors, behavior_learning_infos.deterministics
-        ).mean
-        neg_efp = self.reward_predictor(
-            behavior_learning_infos.priors, behavior_learning_infos.deterministics
-        ).mean
+    def _update_agent(self, infos: AttrDict):
+        values = self.critic_v(infos.priors, infos.deterministics).mean
+        neg_efe = self.one_step_efe(infos.priors, infos.deterministics).mean
         if self.config.use_continue_flag:
-            continues = self.continue_predictor(
-                behavior_learning_infos.priors, behavior_learning_infos.deterministics
-            ).mean
+            continues = self.continue_predictor(infos.priors, infos.deterministics).mean
         else:
             continues = self.config.discount * torch.ones_like(values)
 
         lambda_values = compute_lambda_values(
-            neg_efp,
+            neg_efe,
             values,
             continues,
             self.config.horizon_length,
             self.device,
             self.config.lambda_,
         )
-        # advantage: torch.Tensor = lambda_values - values[:, :-1].detach()
-        actor_loss = -torch.mean(lambda_values)
-        # actor_loss = -torch.mean(behavior_learning_infos.action_log_probs[:, :-1] * advantage)
+        # actor_loss = -torch.mean(lambda_values)
+        advantage: torch.Tensor = lambda_values - values[:, :-1].detach()
+        actor_loss = -torch.mean(infos.action_log_probs[:, :-1] * advantage)
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         nn.utils.clip_grad_norm_(
@@ -218,8 +262,8 @@ class AliveV0Mamba:
         self.actor_optimizer.step()
 
         value_dist = self.critic_v(
-            behavior_learning_infos.priors.detach()[:, :-1],
-            behavior_learning_infos.deterministics.detach()[:, :-1],
+            infos.priors.detach()[:, :-1],
+            infos.deterministics.detach()[:, :-1],
         )
         value_loss = -torch.mean(value_dist.log_prob(lambda_values.detach()))
         self.critic_v_optimizer.zero_grad()
@@ -245,7 +289,7 @@ class AliveV0Mamba:
             # )
             self.writer.add_scalar(
                 "value/neg_expected_free_energy",
-                neg_efp.mean().item(),
+                neg_efe.mean().item(),
                 global_step=self.num_total_episode,
             )
             self.writer.add_scalar(
@@ -261,53 +305,35 @@ class AliveV0Mamba:
                     "value/continue", continues.mean().item(), global_step=self.num_total_episode
                 )
 
-    def search_state(
-        self,
-        state: torch.Tensor,
-        deterministic: torch.Tensor,
-        step: int = 10,
-        lr=0.001,
-        eps: float = 0.01,
-    ):
-        """
-        TODO:
-            1. Add reachability constraint to the state space
-            2. Use diffusion process to search for valid state
-        """
-        ...
-
-    def soft_update(self, target: CriticQ, source: CriticQ, tau: float = 0.005):
-        """
-        target <- (1 - tau) * target + tau * source
-        """
-        with torch.no_grad():
-            for tp, sp in zip(target.parameters(), source.parameters()):
-                tp.data.copy_(tp.data * (1.0 - tau) + sp.data * tau)
-
     @torch.no_grad()
     def environment_interaction(self, env, num_interaction_episodes, train=True):
         for _ in range(num_interaction_episodes):
-            posterior, _ = self.world_model.state0_dist(1)
+            posterior, deterministic = self.rssm.recurrent_model_input_init(1)
             action = torch.zeros(1, self.action_size).to(self.device)
+
             observation = env.reset()
             embedded_observation = self.encoder(
                 torch.from_numpy(observation).float().to(self.device)
             )
+
             score = 0
             score_lst = np.array([])
             done = False
 
             while not done:
-                posterior, deterministic = self.world_model.step(
-                    action, posterior, embedded_observation
-                )
-                action = self.actor(posterior, deterministic).squeeze(1).detach()
+                deterministic = self.rssm.recurrent_model(posterior, action, deterministic)
+                embedded_observation = embedded_observation.reshape(1, -1)
+                _, posterior = self.rssm.representation_model(embedded_observation, deterministic)
+                action = self.actor(posterior, deterministic).detach()
+
                 if self.discrete_action_bool:
                     buffer_action = action.cpu().numpy()
                     env_action = buffer_action.argmax()
+
                 else:
-                    buffer_action = action.cpu().numpy().squeeze()
+                    buffer_action = action.cpu().numpy()[0]
                     env_action = buffer_action
+
                 next_observation, reward, done, truncated, info = env.step(env_action)
                 if train:
                     self.buffer.add(observation, buffer_action, reward, next_observation, done)
@@ -336,3 +362,26 @@ class AliveV0Mamba:
         This replaces your old `search_and_act` but is used only at runtime.
         """
         ...
+
+    def search_state(
+        self,
+        state: torch.Tensor,
+        deterministic: torch.Tensor,
+        step: int = 10,
+        lr=0.001,
+        eps: float = 0.01,
+    ):
+        """
+        TODO:
+            1. Add reachability constraint to the state space
+            2. Use diffusion process to search for valid state
+        """
+        ...
+
+    def soft_update(self, target: CriticQ, source: CriticQ, tau: float = 0.005):
+        """
+        target <- (1 - tau) * target + tau * source
+        """
+        with torch.no_grad():
+            for tp, sp in zip(target.parameters(), source.parameters()):
+                tp.data.copy_(tp.data * (1.0 - tau) + sp.data * tau)

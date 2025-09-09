@@ -13,7 +13,7 @@
             "args": [
                 "--disable-logger",
                 "--algorithm",
-                "alive-v0-mamba"
+                "alive-v0-origin"
             ]
         }
     ]

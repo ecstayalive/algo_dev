@@ -34,16 +34,11 @@ class WorldModel(nn.Module):
         hidden_size = config.parameters.dreamer.deterministic_size
         enc_size = config.parameters.dreamer.embedded_state_size
         self.Wa = nn.Sequential(nn.Linear(action_size, hidden_size), nn.ELU())
-        self.Ws = nn.Sequential(
-            nn.Linear(state_size, hidden_size),
-            nn.ELU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ELU(),
-        )
-        self.mamba = Mamba2(hidden_size, 8, rmsnorm=False)
+        # self.Ws = nn.Sequential(nn.Linear(state_size, hidden_size), nn.ELU())
+        self.mamba = Mamba2(hidden_size, 4, bias=True)
         self.prior_head = build_network(hidden_size, 128, 2, "ELU", 2 * state_size)
         self.post_head = build_network(hidden_size + enc_size, 128, 2, "ELU", 2 * state_size)
-        self.multi_prior_head = build_network(hidden_size, 128, 2, "ELU", 2 * 5 * state_size)
+        # self.multi_prior_head = build_network(hidden_size, 128, 2, "ELU", 2 * 5 * state_size)
 
     def forward(self, actions: torch.Tensor, s0: torch.Tensor, o_embed: torch.Tensor):
         """
@@ -54,16 +49,14 @@ class WorldModel(nn.Module):
         """
         B, L, _ = actions.shape
         a_embed = self.Wa(actions)
-        s0_embed = self.Ws(s0).unsqueeze(1)  # [B, 1, D]
-        with torch.no_grad():
-            a_embed_detach = a_embed.detach()
-            a_embed_detach[:, [0]] = a_embed[:, [0]] + s0_embed
-            h = self.mamba(a_embed_detach)
-            mu_q, log_std_q = self.post_head(torch.cat([h, o_embed], dim=-1)).chunk(2, -1)
-            posterior1 = mu_q + torch.randn_like(mu_q) * F.softplus(log_std_q)
-        s_embed = self.Ws(posterior1)
-        s_embed = torch.cat((s0_embed, s_embed[:, :-1]), 1)  # [B, L, D]
-        h = self.mamba(a_embed + s_embed)
+        # s0_embed = self.Ws(s0).unsqueeze(1)  # [B, 1, D]
+        # with torch.no_grad():
+        #     h = self.mamba(a_embed.detach() + s0_embed.detach())
+        #     mu_q, log_std_q = self.post_head(torch.cat([h, o_embed], dim=-1)).chunk(2, -1)
+        #     posterior1 = mu_q + torch.randn_like(mu_q) * F.softplus(log_std_q)
+        # s_embed = self.Ws(posterior1.detach())
+        # s_embed = torch.cat((s0_embed, s_embed[:, :-1]), 1)  # [B, L, D]
+        h = self.mamba(a_embed)
         mu_p, log_std_p = self.prior_head(h).chunk(2, -1)
         mu_q, log_std_q = self.post_head(torch.cat([h, o_embed], -1)).chunk(2, -1)
         std_p = F.softplus(log_std_p)
@@ -82,8 +75,9 @@ class WorldModel(nn.Module):
             o_embed: [B,E]
         """
         a_embed = self.Wa(action)
-        s_embed = self.Ws(s)
-        u = a_embed + s_embed
+        # s_embed = self.Ws(s)
+        # u = a_embed + s_embed
+        u = a_embed
         h = self.mamba(u.unsqueeze(1)).squeeze(1)
         mu_q, log_std_q = self.post_head(torch.cat([h, o_embed], -1)).chunk(2, -1)
         posterior = mu_q + torch.randn_like(mu_q) * F.softplus(log_std_q)
@@ -96,8 +90,9 @@ class WorldModel(nn.Module):
             s: [B, S]
         """
         a_embed = self.Wa(action)
-        s_embed = self.Ws(s)
-        u = a_embed + s_embed
+        # s_embed = self.Ws(s)
+        # u = a_embed + s_embed
+        u = a_embed
         h = self.mamba(u.unsqueeze(1)).squeeze(1)
         mu_p, log_std_p = self.prior_head(h).chunk(2, -1)
         std_p = F.softplus(log_std_p)

@@ -175,6 +175,29 @@ class Dreamer:
                 "loss/kl_div_loss", kl_divergence_loss.item(), global_step=self.num_total_episode
             )
             self.writer.add_scalar(
+                "value/kl_div", kl_divergence.mean().item(), global_step=self.num_total_episode
+            )
+            self.writer.add_scalar(
+                "value/prior_mean",
+                posterior_info.prior_dist_means.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
+                "value/prior_std",
+                posterior_info.prior_dist_stds.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
+                "value/posterior_mean",
+                posterior_info.posterior_dist_means.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
+                "value/posterior_std",
+                posterior_info.posterior_dist_stds.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
                 "loss/reconstruction_loss",
                 -reconstruction_observation_loss.mean().item(),
                 global_step=self.num_total_episode,

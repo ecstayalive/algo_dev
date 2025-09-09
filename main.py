@@ -19,9 +19,9 @@ from dreamer.utils.utils import get_base_directory, load_config
 @dataclass
 class Args:
     config_file: str = "dmc-walker-walk.yml"
-    algorithm: Literal["dreamer-v1", "plan2explore", "alive-v0-origin", "alive-v0-mamba"] = (
-        "alive-v0-origin"
-    )
+    algorithm: Literal[
+        "dreamer-v1", "plan2explore", "alive-v0-origin", "alive-v0-pc", "alive-v0-ensemble"
+    ] = "alive-v0-origin"
     disable_logger: bool = False
     run_name: str = ""
 
@@ -81,13 +81,11 @@ def main(args: Args):
             agent = AliveV0Origin(
                 obs_shape, discrete_action_bool, action_size, writer, device, config
             )
-        case "alive-v0-mamba":
-            print("Training AliveV0Mamba")
-            from dreamer.algorithms.alivev0mamba import AliveV0Mamba
+        case "alive-v0-pc":
+            print("Training AliveV0PC")
+            from dreamer.algorithms.alivev0pc import AliveV0Pc
 
-            agent = AliveV0Mamba(
-                obs_shape, discrete_action_bool, action_size, writer, device, config
-            )
+            agent = AliveV0Pc(obs_shape, discrete_action_bool, action_size, writer, device, config)
         case "alive-v0-ensemble":
             ...
         case _:

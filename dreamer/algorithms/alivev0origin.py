@@ -177,6 +177,29 @@ class AliveV0Origin:
                 "loss/kl_div_loss", kl_divergence_loss.item(), global_step=self.num_total_episode
             )
             self.writer.add_scalar(
+                "value/kl_div", kl_divergence.mean().item(), global_step=self.num_total_episode
+            )
+            self.writer.add_scalar(
+                "value/prior_mean",
+                infos.prior_dist_means.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
+                "value/prior_std",
+                infos.prior_dist_stds.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
+                "value/posterior_mean",
+                infos.posterior_dist_means.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
+                "value/posterior_std",
+                infos.posterior_dist_stds.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
                 "loss/reconstruction_loss",
                 -reconstruction_observation_loss.mean().item(),
                 global_step=self.num_total_episode,
@@ -212,23 +235,23 @@ class AliveV0Origin:
 
     def _update_agent(self, infos: AttrDict):
         values = self.critic_v(infos.priors, infos.deterministics).mean
-        neg_efp = self.reward_predictor(infos.priors, infos.deterministics).mean
+        neg_efe = self.reward_predictor(infos.priors, infos.deterministics).mean
         if self.config.use_continue_flag:
             continues = self.continue_predictor(infos.priors, infos.deterministics).mean
         else:
             continues = self.config.discount * torch.ones_like(values)
 
         lambda_values = compute_lambda_values(
-            neg_efp,
+            neg_efe,
             values,
             continues,
             self.config.horizon_length,
             self.device,
             self.config.lambda_,
         )
-        actor_loss = -torch.mean(lambda_values)
-        # advantage: torch.Tensor = lambda_values - values[:, :-1].detach()
-        # actor_loss = -torch.mean(infos.action_log_probs[:, :-1] * advantage)
+        # actor_loss = -torch.mean(lambda_values)
+        advantage: torch.Tensor = lambda_values - values[:, :-1].detach()
+        actor_loss = -torch.mean(infos.action_log_probs[:, :-1] * advantage)
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         nn.utils.clip_grad_norm_(
@@ -266,7 +289,7 @@ class AliveV0Origin:
             # )
             self.writer.add_scalar(
                 "value/neg_expected_free_energy",
-                neg_efp.mean().item(),
+                neg_efe.mean().item(),
                 global_step=self.num_total_episode,
             )
             self.writer.add_scalar(

@@ -66,7 +66,7 @@ def create_normal_dist(
     min_std=0.1,
     activation=None,
     event_shape=None,
-):
+) -> torch.distributions.Distribution:
     if std == None:
         mean, std = torch.chunk(x, 2, -1)
         mean = mean / mean_scale
