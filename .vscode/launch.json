@@ -12,6 +12,8 @@
             "console": "integratedTerminal",
             "args": [
                 "--disable-logger",
+                "--config-file",
+                "dmc-walker-run",
                 "--algorithm",
                 "alive-v0-origin"
             ]

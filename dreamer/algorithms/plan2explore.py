@@ -137,12 +137,10 @@ class Plan2Explore(Dreamer):
             posterior_info.posterior_dist_stds,
             event_shape=1,
         )
-        kl_divergence_loss = torch.mean(
-            torch.distributions.kl.kl_divergence(posterior_dist, prior_dist)
-        )
+        kl_divergence = torch.distributions.kl.kl_divergence(posterior_dist, prior_dist)
         kl_divergence_loss = torch.max(
-            torch.tensor(self.config.free_nats).to(self.device), kl_divergence_loss
-        )
+            torch.tensor(self.config.free_nats).to(self.device), kl_divergence
+        ).mean()
         model_loss = (
             self.config.kl_divergence_scale * kl_divergence_loss
             - reconstruction_observation_loss.mean()
@@ -177,7 +175,10 @@ class Plan2Explore(Dreamer):
 
         self.one_step_models_optimizer.zero_grad()
         one_step_model_loss.backward()
-        self.writer.add_scalar("one step model loss", one_step_model_loss, self.num_total_episode)
+        if self.writer:
+            self.writer.add_scalar(
+                "value/one step model loss", one_step_model_loss, self.num_total_episode
+            )
         nn.utils.clip_grad_norm_(
             self.one_step_models_params,
             self.config.clip_grad,
@@ -304,7 +305,7 @@ class Plan2Explore(Dreamer):
                     buffer_action = action.cpu().numpy()[0]
                     env_action = buffer_action
 
-                next_observation, reward, done, info = env.step(env_action)
+                next_observation, reward, done, truncated, info = env.step(env_action)
                 if train:
                     self.buffer.add(observation, buffer_action, reward, next_observation, done)
                 score += reward
@@ -315,11 +316,13 @@ class Plan2Explore(Dreamer):
                 if done:
                     if train:
                         self.num_total_episode += 1
-                        self.writer.add_scalar("training score", score, self.num_total_episode)
+                        if self.writer:
+                            self.writer.add_scalar("training score", score, self.num_total_episode)
                     else:
                         score_lst = np.append(score_lst, score)
                     break
         if not train:
             evaluate_score = score_lst.mean()
             print("evaluate score : ", evaluate_score)
-            self.writer.add_scalar("test score", evaluate_score, self.num_total_episode)
+            if self.writer:
+                self.writer.add_scalar("test score", evaluate_score, self.num_total_episode)

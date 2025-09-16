@@ -48,7 +48,7 @@ parameters:
         stochastic_size: 32
         embedded_state_size: 1024
         buffer:
-            capacity: 5000000
+            capacity: 5000
 
         encoder:
             depth: 32
@@ -79,10 +79,10 @@ parameters:
                 activation: ELU
                 min_std: 0.1
 
-            reward:
-                hidden_size: 400
-                num_layers: 2
-                activation: ELU
+        reward:
+            hidden_size: 400
+            num_layers: 2
+            activation: ELU
 
         continue_:
             hidden_size: 400

@@ -42,7 +42,7 @@ parameters:
     stochastic_size: 32
     embedded_state_size: 1024
     buffer:
-      capacity: 5000000
+      capacity: 5000
 
     encoder:
       depth: 32

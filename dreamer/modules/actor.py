@@ -96,11 +96,11 @@ class ThinkingActor(nn.Module):
         self,
         posterior: torch.Tensor,
         deterministic: torch.Tensor,
-        des_posterior: torch.Tensor,
+        goal_posterior: torch.Tensor,
         return_dist=False,
         squashing=True,
     ) -> torch.Tensor | Tuple[torch.Tensor, torch.distributions.Distribution]:
-        x = torch.cat((posterior, deterministic, des_posterior), -1)
+        x = torch.cat((posterior, deterministic, goal_posterior), -1)
         x = self.network(x)
         if self.discrete_action_bool:
             dist = torch.distributions.OneHotCategorical(logits=x)

@@ -52,7 +52,6 @@ class TransitionModel(nn.Module):
         self.device = config.operation.device
         self.stochastic_size = config.parameters.dreamer.stochastic_size
         self.deterministic_size = config.parameters.dreamer.deterministic_size
-
         self.network = build_network(
             self.deterministic_size,
             self.config.hidden_size,
@@ -79,7 +78,6 @@ class TransitionEnsembleModel(nn.Module):
         self.device = config.operation.device
         self.stochastic_size = config.parameters.dreamer.stochastic_size
         self.deterministic_size = config.parameters.dreamer.deterministic_size
-
         self.network = build_network(
             self.deterministic_size,
             self.config.hidden_size,
@@ -113,7 +111,6 @@ class RepresentationModel(nn.Module):
         self.embedded_state_size = config.parameters.dreamer.embedded_state_size
         self.stochastic_size = config.parameters.dreamer.stochastic_size
         self.deterministic_size = config.parameters.dreamer.deterministic_size
-
         self.network = build_network(
             self.embedded_state_size + self.deterministic_size,
             self.config.hidden_size,
@@ -130,18 +127,18 @@ class RepresentationModel(nn.Module):
 
 
 class RewardModel(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, num_rewards: int = 1):
         super().__init__()
         self.config = config.parameters.dreamer.reward
         self.stochastic_size = config.parameters.dreamer.stochastic_size
         self.deterministic_size = config.parameters.dreamer.deterministic_size
-
+        self.in_features = self.stochastic_size + self.deterministic_size
         self.network = build_network(
             self.stochastic_size + self.deterministic_size,
             self.config.hidden_size,
             self.config.num_layers,
             self.config.activation,
-            1,
+            num_rewards,
         )
 
     def forward(self, posterior, deterministic):

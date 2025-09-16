@@ -1,5 +1,7 @@
 .idea
 venv
 runs
+logs
 __pycache__
 settings.json
+examples

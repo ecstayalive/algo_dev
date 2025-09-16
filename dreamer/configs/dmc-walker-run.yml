@@ -4,6 +4,8 @@ operation:
   log_dir: walker-run
   device: cuda
 environment:
+  max_step_reward: 2.0
+  max_step_reward_std: 0.1
   benchmark: dmc
   domain_name: walker
   task_name: run

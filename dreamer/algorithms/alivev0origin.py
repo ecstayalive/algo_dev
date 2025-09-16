@@ -8,12 +8,13 @@ from torch.utils.tensorboard import SummaryWriter
 
 from dreamer.modules.actor import Gating, HabitActor, ThinkingActor
 from dreamer.modules.critic import CriticQ, CriticV
-from dreamer.modules.decoder import Decoder
-from dreamer.modules.encoder import Encoder
+from dreamer.modules.decoder import Decoder, HierarchicalDecoder
+from dreamer.modules.encoder import Encoder, VaeEncoder
 from dreamer.modules.model import RSSM, ContinueModel, RewardModel
 from dreamer.utils.buffer import ReplayBuffer
 from dreamer.utils.distribution import calculate_information_gain_proxy
 from dreamer.utils.utils import DynamicInfos, compute_lambda_values, create_normal_dist
+from lightning.nn import LinearBlock
 
 
 def attrdict_monkeypatch_fix():
@@ -46,10 +47,13 @@ class AliveV0Origin:
         self.action_size = action_size
         self.discrete_action_bool = discrete_action_bool
 
-        self.encoder = Encoder(observation_shape, config).to(self.device)
-        self.decoder = Decoder(observation_shape, config).to(self.device)
         self.rssm = RSSM(action_size, config).to(self.device)
-        self.reward_predictor = RewardModel(config).to(self.device)
+        self.encoder = Encoder(observation_shape, config).to(self.device)
+        self.decoder = HierarchicalDecoder(observation_shape, config).to(self.device)
+        self.reward_model = RewardModel(config).to(self.device)
+        self.desired_reward_dist = torch.distributions.Normal(
+            config.environment.max_step_reward, config.environment.max_step_reward_std
+        )
         if config.parameters.dreamer.use_continue_flag:
             self.continue_predictor = ContinueModel(config).to(self.device)
         self.actor = HabitActor(discrete_action_bool, action_size, config).to(self.device)
@@ -62,7 +66,7 @@ class AliveV0Origin:
             self.encoder.parameters(),
             self.decoder.parameters(),
             self.rssm.parameters(),
-            self.reward_predictor.parameters(),
+            self.reward_model.parameters(),
         )
         if self.config.use_continue_flag:
             self.model_params += list(self.continue_predictor.parameters())
@@ -81,7 +85,6 @@ class AliveV0Origin:
 
         self.dynamic_learning_infos = DynamicInfos(self.device)
         self.behavior_learning_infos = DynamicInfos(self.device)
-
         self.writer = writer
         self.num_total_episode = 0
 
@@ -114,13 +117,13 @@ class AliveV0Origin:
 
     def dynamic_learning(self, data):
         prior, deterministic = self.rssm.recurrent_model_input_init(len(data.action))
-        data.embedded_observation = self.encoder(data.observation)
         for t in range(1, self.config.batch_length):
             deterministic = self.rssm.recurrent_model(prior, data.action[:, t - 1], deterministic)
             prior_dist, prior = self.rssm.transition_model(deterministic)
-            posterior_dist, posterior = self.rssm.representation_model(
-                data.embedded_observation[:, t], deterministic
-            )
+            o_embed = self.encoder(data.observation[:, t])
+            posterior_dist, posterior = self.rssm.representation_model(o_embed, deterministic)
+            prior_dist: torch.distributions.Normal
+            posterior_dist: torch.distributions.Normal
             self.dynamic_learning_infos.append(
                 priors=prior,
                 prior_dist_means=prior_dist.mean,
@@ -129,17 +132,22 @@ class AliveV0Origin:
                 posterior_dist_means=posterior_dist.mean,
                 posterior_dist_stds=posterior_dist.scale,
                 deterministics=deterministic,
+                o_embed=o_embed,
             )
             prior = posterior
         infos = self.dynamic_learning_infos.get_stacked()
         self._model_update(data, infos)
         return infos
 
-    def _model_update(self, data: dict, infos):
-        reconstructed_observation_dist = self.decoder(infos.posteriors, infos.deterministics)
-        reconstruction_observation_loss = reconstructed_observation_dist.log_prob(
-            data.observation[:, 1:]
+    def _model_update(self, data: dict, infos: AttrDict):
+        reconstructed_o_embed, reconstructed_image = self.decoder(
+            infos.posteriors, infos.deterministics
         )
+        reconstructed_o_embde_loss = torch.sum((reconstructed_o_embed - infos.o_embed) ** 2, dim=-1)
+        reconstructed_image_loss = torch.sum(
+            (reconstructed_image - data.observation[:, 1:]).flatten(start_dim=-3) ** 2, dim=-1
+        )
+        reconstructed_loss = reconstructed_image_loss + reconstructed_o_embde_loss
         if self.config.use_continue_flag:
             continue_dist = self.continue_predictor(infos.posteriors, infos.deterministics)
             continue_loss = self.continue_criterion(continue_dist.probs, 1 - data.done[:, 1:])
@@ -149,17 +157,15 @@ class AliveV0Origin:
         posterior_dist = create_normal_dist(
             infos.posterior_dist_means, infos.posterior_dist_stds, event_shape=1
         )
-        kl_divergence = torch.distributions.kl.kl_divergence(posterior_dist, prior_dist).unsqueeze(
-            -1
-        )
-        reward_dist = self.reward_predictor(infos.posteriors, infos.deterministics)
-        reward_loss = reward_dist.log_prob(data.reward[:, 1:] + 0.05 * kl_divergence.detach())
+        kl_divergence = torch.distributions.kl_divergence(posterior_dist, prior_dist).unsqueeze(-1)
         kl_divergence_loss = torch.max(
             torch.tensor(self.config.free_nats).to(self.device), kl_divergence
         ).mean()
+        reward_dist = self.reward_model(infos.posteriors, infos.deterministics)
+        reward_loss = reward_dist.log_prob(data.reward[:, 1:])
         model_loss = (
             self.config.kl_divergence_scale * kl_divergence_loss
-            - reconstruction_observation_loss.mean()
+            + reconstructed_loss.mean()
             - reward_loss.mean()
         )
         if self.config.use_continue_flag:
@@ -201,7 +207,17 @@ class AliveV0Origin:
             )
             self.writer.add_scalar(
                 "loss/reconstruction_loss",
-                -reconstruction_observation_loss.mean().item(),
+                reconstructed_loss.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
+                "loss/reconstruction_o_embed",
+                reconstructed_o_embde_loss.mean().item(),
+                global_step=self.num_total_episode,
+            )
+            self.writer.add_scalar(
+                "loss/reconstruction_image",
+                reconstructed_image_loss.mean().item(),
                 global_step=self.num_total_episode,
             )
             self.writer.add_scalar(
@@ -223,9 +239,16 @@ class AliveV0Origin:
             )
             action = ori_action.tanh()
             deterministic = self.rssm.recurrent_model(state, action, deterministic)
-            _, state = self.rssm.transition_model(deterministic)
+            priors_dist, state = self.rssm.transition_model(deterministic)
+            o_embed = self.decoder.decode_o_embed(state, deterministic)
+            posterior_dist, post = self.rssm.representation_model(o_embed, deterministic)
             self.behavior_learning_infos.append(
                 priors=state,
+                mu_p=priors_dist.mean,
+                std_p=priors_dist.scale,
+                posts=post,
+                mu_q=posterior_dist.mean,
+                std_q=posterior_dist.scale,
                 actions=action,
                 action_log_probs=action_log_prob.sum(dim=-1, keepdim=True),
                 deterministics=deterministic,
@@ -235,7 +258,13 @@ class AliveV0Origin:
 
     def _update_agent(self, infos: AttrDict):
         values = self.critic_v(infos.priors, infos.deterministics).mean
-        neg_efe = self.reward_predictor(infos.priors, infos.deterministics).mean
+        pragmatic_value = self.desired_reward_dist.log_prob(
+            self.reward_model(infos.priors, infos.deterministics).mean
+        )
+        p_dist = create_normal_dist(infos.mu_p, infos.std_p, event_shape=1)
+        q_dist = create_normal_dist(infos.mu_q, infos.std_q, event_shape=1)
+        epistemic_value = torch.distributions.kl.kl_divergence(q_dist, p_dist).unsqueeze(-1)
+        neg_efe = pragmatic_value + epistemic_value
         if self.config.use_continue_flag:
             continues = self.continue_predictor(infos.priors, infos.deterministics).mean
         else:
@@ -249,9 +278,9 @@ class AliveV0Origin:
             self.device,
             self.config.lambda_,
         )
-        # actor_loss = -torch.mean(lambda_values)
-        advantage: torch.Tensor = lambda_values - values[:, :-1].detach()
-        actor_loss = -torch.mean(infos.action_log_probs[:, :-1] * advantage)
+        actor_loss = -torch.mean(lambda_values)
+        # advantage: torch.Tensor = lambda_values - values[:, :-1].detach()
+        # actor_loss = -torch.mean(infos.action_log_probs[:, :-1] * advantage)
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         nn.utils.clip_grad_norm_(
@@ -281,12 +310,12 @@ class AliveV0Origin:
             self.writer.add_scalar(
                 "loss/critic", value_loss.item(), global_step=self.num_total_episode
             )
-            # self.writer.add_scalar(
-            #     "value/pragmatic", pragmatic_value.mean().item(), global_step=self.num_total_episode
-            # )
-            # self.writer.add_scalar(
-            #     "value/epistemic", epistemic_value.mean().item(), global_step=self.num_total_episode
-            # )
+            self.writer.add_scalar(
+                "value/pragmatic", pragmatic_value.mean().item(), global_step=self.num_total_episode
+            )
+            self.writer.add_scalar(
+                "value/epistemic", epistemic_value.mean().item(), global_step=self.num_total_episode
+            )
             self.writer.add_scalar(
                 "value/neg_expected_free_energy",
                 neg_efe.mean().item(),
@@ -312,7 +341,7 @@ class AliveV0Origin:
             action = torch.zeros(1, self.action_size).to(self.device)
 
             observation = env.reset()
-            embedded_observation = self.encoder(
+            embedded_observation: torch.Tensor = self.encoder(
                 torch.from_numpy(observation).float().to(self.device)
             )
 

@@ -59,7 +59,7 @@ def initialize_weights(m):
 
 
 def create_normal_dist(
-    x,
+    x: torch.Tensor,
     std=None,
     mean_scale=1,
     init_std=0,

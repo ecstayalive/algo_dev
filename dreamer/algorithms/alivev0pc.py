@@ -28,10 +28,7 @@ from attrdict import AttrDict
 
 
 class AliveV0Pc:
-    """
-    A new reinforcement learning algorithm.
-    Now we testing its theory and implementation.
-    """
+    """ """
 
     def __init__(
         self,
