@@ -27,7 +27,6 @@ parameters:
     num_interaction_episodes: 1
     seed_episodes: 5
     num_evaluate: 3
-
     kl_divergence_scale: 1
     free_nats: 3
     discount: 0.99

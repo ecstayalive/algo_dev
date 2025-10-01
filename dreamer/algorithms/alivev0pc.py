@@ -8,8 +8,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from dreamer.modules.actor import Gating, HabitActor, ThinkingActor
 from dreamer.modules.critic import CriticQ, CriticV
-from dreamer.modules.decoder import Decoder
-from dreamer.modules.encoder import Encoder
+from dreamer.modules.decoder import VisionDecoder
+from dreamer.modules.encoder import VisionEncoder
 from dreamer.modules.model import RSSM, ContinueModel, RewardModel
 from dreamer.utils.buffer import ReplayBuffer
 from dreamer.utils.distribution import calculate_information_gain_proxy
@@ -43,8 +43,8 @@ class AliveV0Pc:
         self.action_size = action_size
         self.discrete_action_bool = discrete_action_bool
 
-        self.encoder = Encoder(observation_shape, config).to(self.device)
-        self.decoder = Decoder(observation_shape, config).to(self.device)
+        self.encoder = VisionEncoder(observation_shape, config).to(self.device)
+        self.decoder = VisionDecoder(observation_shape, config).to(self.device)
         self.rssm = RSSM(action_size, config).to(self.device)
         self.one_step_efe = RewardModel(config).to(self.device)
         if config.parameters.dreamer.use_continue_flag:

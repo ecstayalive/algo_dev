@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch.distributions import Normal
 
 from dreamer.utils.utils import build_network, create_normal_dist, horizontal_forward
+from lightning.nn import LinearBlock
 
 
 class RSSM(nn.Module):
@@ -20,6 +21,23 @@ class RSSM(nn.Module):
         return self.transition_model.input_init(batch_size), self.recurrent_model.input_init(
             batch_size
         )
+
+
+class InformationGainModel(nn.Module):
+    def __init__(self, state_size: int, min_gain: float = 0.1):
+        """_summary_
+
+        Args:
+            state_size (int): _description_
+            min_gain (float, optional): _description_. Defaults to 0.1.
+        """
+        super().__init__()
+        self.model = LinearBlock(state_size, 2, [128, 128], "relu")
+        self.min_gain = min_gain
+
+    def forward(self, x: torch.Tensor):
+        log_params = self.model(x)
+        return create_normal_dist(log_params, min_std=self.min_gain)
 
 
 class RecurrentModel(nn.Module):
@@ -146,6 +164,32 @@ class RewardModel(nn.Module):
         return create_normal_dist(x, std=1, event_shape=1)
 
 
+class CustomRewardModel(nn.Module):
+    def __init__(self, config, num_rewards: int = 1):
+        super().__init__()
+        self.config = config.parameters.dreamer.reward
+        self.stochastic_size = config.parameters.dreamer.stochastic_size
+        self.deterministic_size = config.parameters.dreamer.deterministic_size
+        self.o_embed_size = config.parameters.dreamer.embedded_state_size
+        self.num_rewards = num_rewards
+        self.network = build_network(
+            self.o_embed_size,
+            self.config.hidden_size,
+            self.config.num_layers,
+            self.config.activation,
+            num_rewards,
+        )
+
+    def forward(self, features: torch.Tensor):
+        x = horizontal_forward(
+            self.network,
+            features,
+            input_shape=(features.shape[-1],),
+            output_shape=(self.num_rewards,),
+        )
+        return create_normal_dist(x, std=1, event_shape=1)
+
+
 class ContinueModel(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -163,4 +207,5 @@ class ContinueModel(nn.Module):
 
     def forward(self, posterior, deterministic):
         x = horizontal_forward(self.network, posterior, deterministic, output_shape=(1,))
+        return torch.distributions.Bernoulli(logits=x)
         return torch.distributions.Bernoulli(logits=x)

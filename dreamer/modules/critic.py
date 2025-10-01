@@ -19,7 +19,7 @@ class CriticV(nn.Module):
             1,
         )
 
-    def forward(self, posterior, deterministic):
+    def forward(self, posterior: torch.Tensor, deterministic: torch.Tensor):
         x = horizontal_forward(self.network, posterior, deterministic, output_shape=(1,))
         return create_normal_dist(x, std=1, event_shape=1)
 

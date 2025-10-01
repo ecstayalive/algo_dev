@@ -8,7 +8,7 @@ from dreamer.utils.utils import (
 )
 
 
-class Encoder(nn.Module):
+class VisionEncoder(nn.Module):
     def __init__(self, observation_shape, config):
         super().__init__()
         self.config = config.parameters.dreamer.encoder

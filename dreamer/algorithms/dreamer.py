@@ -5,8 +5,8 @@ from rich.progress import BarColumn, Progress, TimeElapsedColumn, TimeRemainingC
 
 from dreamer.modules.actor import HabitActor
 from dreamer.modules.critic import CriticV
-from dreamer.modules.decoder import Decoder
-from dreamer.modules.encoder import Encoder
+from dreamer.modules.decoder import VisionDecoder
+from dreamer.modules.encoder import VisionEncoder
 from dreamer.modules.model import RSSM, ContinueModel, RewardModel
 from dreamer.utils.buffer import ReplayBuffer
 from dreamer.utils.utils import DynamicInfos, compute_lambda_values, create_normal_dist
@@ -26,8 +26,8 @@ class Dreamer:
         self.action_size = action_size
         self.discrete_action_bool = discrete_action_bool
 
-        self.encoder = Encoder(observation_shape, config).to(self.device)
-        self.decoder = Decoder(observation_shape, config).to(self.device)
+        self.encoder = VisionEncoder(observation_shape, config).to(self.device)
+        self.decoder = VisionDecoder(observation_shape, config).to(self.device)
         self.rssm = RSSM(action_size, config).to(self.device)
         self.reward_predictor = RewardModel(config).to(self.device)
         if config.parameters.dreamer.use_continue_flag:

@@ -10,6 +10,7 @@ import tyro
 from torch.utils.tensorboard import SummaryWriter
 
 from dreamer.algorithms.alivev0origin import AliveV0Origin
+from dreamer.algorithms.alivev0space_attention import AliveV0SpaceAttention
 from dreamer.algorithms.dreamer import Dreamer
 from dreamer.algorithms.plan2explore import Plan2Explore
 from dreamer.envs.envs import get_env_infos, make_atari_env, make_dmc_env
@@ -20,7 +21,12 @@ from dreamer.utils.utils import get_base_directory, load_config
 class Args:
     config_file: str = "dmc-walker-walk.yml"
     algorithm: Literal[
-        "dreamer-v1", "plan2explore", "alive-v0-origin", "alive-v0-pc", "alive-v0-ensemble"
+        "dreamer-v1",
+        "plan2explore",
+        "alive-v0-origin",
+        "alive-v0-pc",
+        "alive-v0-ensemble",
+        "alive-v0-space_attention",
     ] = "alive-v0-origin"
     disable_logger: bool = False
     run_name: str = ""
@@ -79,6 +85,11 @@ def main(args: Args):
         case "alive-v0-origin":
             print("Training AliveV0Origin")
             agent = AliveV0Origin(
+                obs_shape, discrete_action_bool, action_size, writer, device, config
+            )
+        case "alive-v0-space_attention":
+            print("Training AliveV0SpaceAttention")
+            agent = AliveV0SpaceAttention(
                 obs_shape, discrete_action_bool, action_size, writer, device, config
             )
         case "alive-v0-pc":

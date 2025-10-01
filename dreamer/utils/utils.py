@@ -11,10 +11,16 @@ attrdict_monkeypatch_fix()
 import os
 
 import torch
+import torch.jit as jit
 import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 from attrdict import AttrDict
+
+
+@jit.script
+def inv_softplus(x: torch.Tensor):
+    return x + torch.log(-torch.expm1(-x))
 
 
 def horizontal_forward(network, x, y=None, input_shape=(-1,), output_shape=(-1,)):

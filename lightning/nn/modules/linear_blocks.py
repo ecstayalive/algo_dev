@@ -1,5 +1,5 @@
 import math
-from typing import Iterator
+from typing import Iterator, List, Tuple
 
 import torch
 import torch.nn as nn
@@ -153,18 +153,6 @@ class SirenBlock(nn.Module):
 
     def extra_repr(self) -> str:
         return f"(siren_head): Linear(in_features={self.arch[0]}, out_features={self.arch[1]}, bias=True)"
-
-
-import math
-from typing import Iterator, List, Tuple
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-# 假设有一个激活函数名称到类的映射
-# 为了简单起见，我们直接使用 getattr(nn, ...)
-# ACTIVATION_CLS_NAME = {"softsign": "Softsign", "relu": "ReLU", "tanh": "Tanh"}
 
 
 class PredictiveCoding(nn.Module):

@@ -60,7 +60,7 @@ python main.py --config p2e-dmc-walker-walk
 | finger-turn_easy        | 805.1  |
 | cartpole-balance-sparse | 541.6  |
 | hopper-hop              | 250.7  |
-| walker-run              | 284.6  |
+| walker-run              | 480.7  |
 | reacher-hard            | 162.7  |
 | reacher-easy            | 911.4  |
 | acrobot-swingup         | 91.8   |
