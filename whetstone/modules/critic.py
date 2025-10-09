@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from dreamer.utils.utils import build_network, create_normal_dist, horizontal_forward
+from whetstone.utils.utils import build_network, create_normal_dist, horizontal_forward
 
 
 class CriticV(nn.Module):

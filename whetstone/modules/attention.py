@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
-from lightning.nn import LinearBlock
+from thunder.nn import LinearBlock
 
 
 class SpaceAttention(nn.Module):
@@ -316,7 +316,7 @@ class PatchEncoder(nn.Module):
         with torch.no_grad():
             dummy_input = torch.zeros(1, *self._input_shape)
             flattened_size = self.cnn(dummy_input).shape[1]
-        self.mlp = Linear(flattened_size, output_size, bias=False)
+        self.mlp = nn.Linear(flattened_size, output_size, bias=False)
 
     def forward(self, glimpse):
         """
@@ -347,7 +347,7 @@ class PatchDecoder(nn.Module):
 
         self.flattened_size = 64 * 1 * 1
         self.in_shape = (64, 1, 1)
-        self.mlp = Linear(self.state_size, self.flattened_size, bias=False)
+        self.mlp = nn.Linear(self.state_size, self.flattened_size, bias=False)
         self.de_conv = nn.Sequential(
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=1),  # -> [B, 32, 3, 3]
             nn.ReLU(),
@@ -551,5 +551,6 @@ class HybridAttentiveEncoder(nn.Module):
         # 5. 聚合所有经过上下文增强的瞥见信息
         aggregated_embedding = torch.sum(contextualized_glimpses, dim=1)
 
+        return aggregated_embedding
         return aggregated_embedding
         return aggregated_embedding

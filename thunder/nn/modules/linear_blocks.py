@@ -6,11 +6,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-from lightning.nn.mapping import ACTIVATION_CLS_NAME
+from thunder.nn.mapping import ACTIVATION_CLS_NAME
 
 from .activation import Sin
 
-__all__ = ["LinearBlock", "SirenBlock", "PredictiveCoding"]
+__all__ = ["LinearBlock", "SirenBlock", "PcLinearBlock"]
 
 
 class LinearBlock(nn.Module):
@@ -155,8 +155,31 @@ class SirenBlock(nn.Module):
         return f"(siren_head): Linear(in_features={self.arch[0]}, out_features={self.arch[1]}, bias=True)"
 
 
-class PredictiveCoding(nn.Module):
-    """Modular Predictive Coding Block
+class PcLinear(nn.Module):
+    """Predictive Coding Linear Layer
+    Args:
+        in_features: Size of each input sample.
+        out_features: Size of each output sample.
+        device: The device to place tensors on.
+        dtype: The data type for tensors.
+    """
+
+    def __init__(self, in_features: int, out_features: int, device=None, dtype=None):
+        super().__init__()
+        self.weight = nn.Parameter(
+            torch.Tensor(out_features, in_features, device=device, dtype=dtype)
+        )
+        self.reset_parameters()
+
+    def reset_parameters(self, gain: float = 2.0) -> None:
+        nn.init.orthogonal_(self.weight, math.sqrt(gain))
+
+    def forward(self, input: Tensor) -> Tensor:
+        return F.linear(input, self.weight)
+
+
+class PcLinearBlock(nn.Module):
+    """Modular Predictive Coding Linear Block
 
     Args:
         in_features: Size of each input sample.
@@ -193,54 +216,48 @@ class PredictiveCoding(nn.Module):
         super().__init__()
         factory_kwargs = {"device": device, "dtype": dtype}
 
-        # --- Store configuration ---
         self.inference_steps = inference_steps
         self.inference_lr = inference_lr
         self.tied_weights = tied_weights
 
-        # --- Define network architecture ---
         if hidden_features is not None:
             self.arch = (in_features, *hidden_features, out_features)
         else:
             self.arch = (in_features, out_features)
         self.num_layers = len(self.arch)
 
-        # --- Get activation function ---
         try:
             activation_cls = getattr(nn, activation)
             self.activation_fn = activation_cls()
         except AttributeError:
             raise ValueError(f"Activation function '{activation}' not found in torch.nn")
 
-        # --- Create layers ---
         self.forward_layers = nn.ModuleList()
         self.feedback_layers = nn.ModuleList()
 
         for i in range(self.num_layers - 1):
-            # Feedforward connections (bottom-up)
             self.forward_layers.append(nn.Linear(self.arch[i], self.arch[i + 1], **factory_kwargs))
-            # Feedback connections (top-down)
             if not self.tied_weights:
                 self.feedback_layers.append(
                     nn.Linear(self.arch[i + 1], self.arch[i], **factory_kwargs)
                 )
 
-        # Initialize weights
         self.reset_parameters()
 
-    def reset_parameters(self, gain: float = 1.0) -> None:
+    def reset_parameters(self, gain: float = 2.0) -> None:
         """Initialize the weights of the network."""
-        for i, layer in enumerate(self.forward_layers):
-            # Use orthogonal initialization for stability
-            nn.init.orthogonal_(layer.weight, gain=math.sqrt(gain))
-            if layer.bias is not None:
-                nn.init.zeros_(layer.bias)
-
-        if not self.tied_weights:
-            for layer in self.feedback_layers:
+        for layer in self.forward_layers:
+            if isinstance(layer, nn.Linear):
                 nn.init.orthogonal_(layer.weight, gain=math.sqrt(gain))
                 if layer.bias is not None:
                     nn.init.zeros_(layer.bias)
+
+        if not self.tied_weights:
+            for layer in self.feedback_layers:
+                if isinstance(layer, nn.Linear):
+                    nn.init.orthogonal_(layer.weight, gain=math.sqrt(gain))
+                    if layer.bias is not None:
+                        nn.init.zeros_(layer.bias)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -331,3 +348,15 @@ class PredictiveCoding(nn.Module):
         total_error = 0.5 * sum([torch.sum(e * e) for e in final_errors])
 
         return r[-1], total_error
+
+    def inference(self, x: torch.Tensor) -> torch.Tensor:
+        """Run inference to get the output representation without computing loss.
+
+        Args:
+            x: Input tensor of shape (batch_size, in_features).
+
+        Returns:
+            output (torch.Tensor): The state of the final layer after inference.
+        """
+        output, _ = self.forward(x)
+        return output

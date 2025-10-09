@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
 
-from lightning.nn.mapping import ACTIVATION_CLS_NAME
+from thunder.nn.mapping import ACTIVATION_CLS_NAME
 
 __all__ = ["MambaBlock"]
 

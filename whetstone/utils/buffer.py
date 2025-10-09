@@ -1,4 +1,4 @@
-from dreamer.utils.utils import attrdict_monkeypatch_fix
+from whetstone.utils.utils import attrdict_monkeypatch_fix
 
 attrdict_monkeypatch_fix()
 

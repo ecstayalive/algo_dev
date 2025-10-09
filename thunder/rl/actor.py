@@ -5,10 +5,10 @@ from typing import Any, Mapping, Optional, Tuple
 import torch
 import torch.nn as nn
 
-from lightning.distributions import *
-from lightning.models import GaussianRbf
-from lightning.nn import LinearBlock, Normalization, RunningNorm1d
-from lightning.rl.utils import *
+from thunder.distributions import *
+from thunder.models import GaussianRbf
+from thunder.nn import LinearBlock, Normalization, RunningNorm1d
+from thunder.rl.utils import *
 
 from .script_modules import ScriptGeneralActor, ScriptSeqEncoderActor
 from .utils import DimAdaptRMlp, NetFactory, NetInfo

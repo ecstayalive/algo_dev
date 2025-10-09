@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
 
-from dreamer.utils.utils import build_network, create_normal_dist, horizontal_forward
-from lightning.nn import LinearBlock
+from thunder.nn import LinearBlock
+from whetstone.utils.utils import build_network, create_normal_dist, horizontal_forward
 
 
 class RSSM(nn.Module):

@@ -4,7 +4,7 @@ from typing import Iterable, Optional, Tuple, overload
 import torch
 from torch import nn
 
-from lightning.nn import LinearBlock
+from thunder.nn import LinearBlock
 
 LOG_SQRT_2PI = math.log(math.sqrt(2 * math.pi))
 ENTROPY_BIAS = 0.5 + 0.5 * math.log(2 * math.pi)

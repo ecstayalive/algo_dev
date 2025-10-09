@@ -7,8 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
 
-from lightning.nn import LinearBlock
-from lightning.nn.mapping import ACTIVATION_CLS_NAME
+from thunder.nn import LinearBlock
+from thunder.nn.mapping import ACTIVATION_CLS_NAME
 
 
 class RSSM(nn.Module):

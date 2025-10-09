@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 
-from dreamer.utils.utils import (
+from whetstone.utils.utils import (
     create_normal_dist,
     horizontal_forward,
     initialize_weights,

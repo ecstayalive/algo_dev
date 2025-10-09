@@ -1,6 +1,6 @@
 import gymnasium as gym
 
-from dreamer.envs.wrappers import *
+from whetstone.envs.wrappers import *
 
 from .dmc_wrappers import DMControlWrapper
 

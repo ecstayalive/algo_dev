@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import TanhTransform
 
-from dreamer.utils.utils import build_network, create_normal_dist
+from whetstone.utils.utils import build_network, create_normal_dist
 
 
 class HabitActor(nn.Module):

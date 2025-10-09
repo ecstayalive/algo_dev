@@ -2,12 +2,16 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from dreamer.algorithms.dreamer import Dreamer
-from dreamer.modules.actor import HabitActor
-from dreamer.modules.critic import CriticV
-from dreamer.modules.one_step_model import OneStepModel
-from dreamer.utils.buffer import ReplayBuffer
-from dreamer.utils.utils import DynamicInfos, compute_lambda_values, create_normal_dist
+from whetstone.algorithms.dreamer import Dreamer
+from whetstone.modules.actor import HabitActor
+from whetstone.modules.critic import CriticV
+from whetstone.modules.one_step_model import OneStepModel
+from whetstone.utils.buffer import ReplayBuffer
+from whetstone.utils.utils import (
+    DynamicInfos,
+    compute_lambda_values,
+    create_normal_dist,
+)
 
 
 class Plan2Explore(Dreamer):

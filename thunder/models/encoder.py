@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from lightning.nn import Conv2dBlock
+from thunder.nn import Conv2dBlock
 
 
 class VisualEnc(nn.Module):
