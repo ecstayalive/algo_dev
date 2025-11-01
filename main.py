@@ -9,12 +9,12 @@ from typing import Literal
 import tyro
 from torch.utils.tensorboard import SummaryWriter
 
-from dreamer.algorithms.alivev0origin import AliveV0Origin
-from dreamer.algorithms.alivev0space_attention import AliveV0SpaceAttention
-from dreamer.algorithms.dreamer import Dreamer
-from dreamer.algorithms.plan2explore import Plan2Explore
-from dreamer.envs.envs import get_env_infos, make_atari_env, make_dmc_env
-from dreamer.utils.utils import get_base_directory, load_config
+from whetstone.algorithms.alivev0origin import AliveV0
+from whetstone.algorithms.alivev0space_attention import AliveV0SpaceAttention
+from whetstone.algorithms.dreamer import DreamerV1
+from whetstone.algorithms.plan2explore import Plan2Explore
+from whetstone.envs.envs import get_env_infos, make_atari_env, make_dmc_env
+from whetstone.utils.utils import get_base_directory, load_config
 
 
 @dataclass
@@ -76,7 +76,7 @@ def main(args: Args):
     match config.algorithm:
         case "dreamer-v1":
             print("Training DreamerV1")
-            agent = Dreamer(obs_shape, discrete_action_bool, action_size, writer, device, config)
+            agent = DreamerV1(obs_shape, discrete_action_bool, action_size, writer, device, config)
         case "plan2explore":
             print("Training Plan2Explore")
             agent = Plan2Explore(
@@ -84,21 +84,12 @@ def main(args: Args):
             )
         case "alive-v0-origin":
             print("Training AliveV0Origin")
-            agent = AliveV0Origin(
-                obs_shape, discrete_action_bool, action_size, writer, device, config
-            )
+            agent = AliveV0(obs_shape, discrete_action_bool, action_size, writer, device, config)
         case "alive-v0-space_attention":
             print("Training AliveV0SpaceAttention")
             agent = AliveV0SpaceAttention(
                 obs_shape, discrete_action_bool, action_size, writer, device, config
             )
-        case "alive-v0-pc":
-            print("Training AliveV0PC")
-            from dreamer.algorithms.alivev0pc import AliveV0Pc
-
-            agent = AliveV0Pc(obs_shape, discrete_action_bool, action_size, writer, device, config)
-        case "alive-v0-ensemble":
-            ...
         case _:
             raise ValueError(f"Unknown algorithm: {config.algorithm}")
 

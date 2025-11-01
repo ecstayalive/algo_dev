@@ -3,8 +3,7 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 
-from lightning.distributions import Distribution
-from lightning.nn import (
+from thunder.nn import (
     GruMlp,
     LinearBlock,
     LstmMlp,
@@ -12,6 +11,7 @@ from lightning.nn import (
     RecurrentMlp,
     RunningNorm1d,
 )
+from thunder.rl import Distribution
 
 __all__ = ["ScriptNet", "ScriptGeneralActor", "ScriptSeqEncoderActor"]
 

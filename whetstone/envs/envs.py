@@ -20,6 +20,7 @@ def make_dmc_env(
     time_limit=None,
     channels_first=True,
     pixel_norm=True,
+    headless: bool = True,
 ):
     env_id = f"dmc_{domain_name}_{task_name}_{seed}-v1"
     if from_pixels:
@@ -47,6 +48,7 @@ def make_dmc_env(
                 camera_id=camera_id,
                 frame_skip=frame_skip,
                 channels_first=channels_first,
+                headless=headless,
             ),
             max_episode_steps=max_episode_steps,
         )

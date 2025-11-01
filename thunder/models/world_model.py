@@ -142,4 +142,3 @@ class RepresentationModel(nn.Module):
         x = self.network(torch.cat([deterministic, o_embed], dim=-1))
         mu, log_std = torch.chunk(x, 2 - 1)
         return mu, log_std
-        return mu, log_std

@@ -1,6 +1,7 @@
 from typing import Any
 
 import gymnasium as gym
+import mujoco.viewer
 import numpy as np
 from dm_control import suite
 from dm_env import specs
@@ -51,6 +52,7 @@ class DMControlWrapper(gym.Env):
         frame_skip=1,
         environment_kwargs=None,
         channels_first=True,
+        headless: bool = True,
     ):
         assert "random" in task_kwargs, "please specify a seed, for deterministic behaviors"
         self._from_pixels = from_pixels
@@ -68,6 +70,9 @@ class DMControlWrapper(gym.Env):
             visualize_reward=visualize_reward,
             environment_kwargs=environment_kwargs,
         )
+        self.model = self._env.physics.model.ptr
+        self.data = self._env.physics.data.ptr
+        self.viewer = None if headless else mujoco.viewer.launch_passive(self.model, self.data)
 
         # true and normalized action spaces
         self._true_action_space = _spec_to_box([self._env.action_spec()], np.float32)
@@ -162,4 +167,12 @@ class DMControlWrapper(gym.Env):
         height = height or self._height
         width = width or self._width
         camera_id = camera_id
+        if self.viewer is not None:
+            self.viewer.sync()
         return self._env.physics.render(height=height, width=width, camera_id=camera_id)
+
+    def close(self):
+        if self.viewer is not None:
+            self.viewer.close()
+            self.viewer = None
+        self._env.close()

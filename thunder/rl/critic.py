@@ -4,9 +4,9 @@ import torch
 from torch import nn
 
 from thunder.nn import LinearBlock, RunningNorm1d
+from thunder.rl import DimAdaptRMlp
 from thunder.rl.utils import any_recurrent, is_recurrent
 
-from .utils import DimAdaptRMlp
 from .utils.factory import NetFactory
 
 __all__ = ["GeneralVNet", "GeneralQNet", "MultiHeadVNet", "MultiHeadQNet", "MultiVNet", "MultiQNet"]

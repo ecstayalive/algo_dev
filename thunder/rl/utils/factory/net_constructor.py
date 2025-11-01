@@ -3,10 +3,9 @@ import types
 from inspect import Parameter
 from typing import Dict, Iterator, Tuple
 
+import thunder
 import torch
 import torch.nn as nn
-
-import lightning
 
 from .info_processor import NetInfo
 
@@ -32,7 +31,9 @@ class NetConstructor:
         if only_return_modules:
             return modules, net_info
 
-        def __init__(obj, modules: nn.Module | nn.ModuleList, net_info: NetInfo) -> None:
+        def __init__(
+            obj, modules: nn.Module | nn.ModuleList, net_info: NetInfo
+        ) -> None:
             super(obj.__class__, obj).__init__()
             obj.networks = modules
             obj.net_info = net_info
@@ -59,7 +60,7 @@ class NetConstructor:
     def _get_module(self, module: Dict) -> nn.Module:
         module_name, module_params = module.popitem()
         try:
-            module_instance = getattr(lightning.nn, module_name)
+            module_instance = getattr(thunder.nn, module_name)
         except AttributeError:
             module_instance = getattr(nn, module_name)
         return module_instance(**module_params)
@@ -119,7 +120,9 @@ class NetConstructor:
         else:
             for id in range(self.net_info.num_rnn_net):
                 forward_fn_params.append(
-                    Parameter(f"hidden{id}", Parameter.POSITIONAL_OR_KEYWORD, default=None)
+                    Parameter(
+                        f"hidden{id}", Parameter.POSITIONAL_OR_KEYWORD, default=None
+                    )
                 )
         forward_default_arg_values = tuple(
             p.default for p in forward_fn_params if p.default != Parameter.empty

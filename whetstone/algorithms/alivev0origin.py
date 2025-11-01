@@ -39,7 +39,7 @@ def attrdict_monkeypatch_fix():
 from attrdict import AttrDict
 
 
-class AliveV0Origin:
+class AliveV0:
     """
     A new reinforcement learning algorithm.
     Now we testing its theory and implementation.

@@ -16,7 +16,7 @@ from whetstone.utils.utils import (
 )
 
 
-class Dreamer:
+class DreamerV1:
     def __init__(
         self,
         observation_shape,

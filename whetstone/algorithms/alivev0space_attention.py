@@ -9,11 +9,7 @@ from rich.progress import BarColumn, Progress, TimeElapsedColumn, TimeRemainingC
 from torch.utils.tensorboard import SummaryWriter
 
 from whetstone.modules.actor import HabitActor, ThinkingActor
-from whetstone.modules.attention import (
-    AttentiveDecoder,
-    AttentiveEncoder,
-    SpaceAttention,
-)
+from whetstone.modules.attention import AttentiveDecoder, AttentiveEncoder
 from whetstone.modules.critic import CriticQ, CriticV
 from whetstone.modules.decoder import VisionDecoder
 from whetstone.modules.encoder import VisionEncoder

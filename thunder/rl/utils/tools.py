@@ -1,5 +1,14 @@
+import copy
+
 import torch
 from torch import nn
+
+
+def create_target(net: nn.Module):
+    target = copy.deepcopy(net)
+    for p in target.parameters():
+        p.requires_grad = False
+    return target
 
 
 @torch.inference_mode()

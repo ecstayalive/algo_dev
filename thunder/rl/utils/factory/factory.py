@@ -2,10 +2,9 @@ import copy
 from dataclasses import dataclass, field
 from typing import Dict, Iterator, Optional, Tuple
 
+import thunder
 import torch
 import torch.nn as nn
-
-import lightning
 
 from .info_processor import ModulesInfoProcessor, NetInfo
 from .net_constructor import NetConstructor
@@ -50,7 +49,9 @@ class NetFactory:
         modules_info: A iterable sequence of modules' information
     """
 
-    def __init__(self, modules_info: Iterator[Dict], net_name: Optional[str] = "CustomNet") -> None:
+    def __init__(
+        self, modules_info: Iterator[Dict], net_name: Optional[str] = "CustomNet"
+    ) -> None:
         self.modules_info_processor = ModulesInfoProcessor(copy.deepcopy(modules_info))
         self.net_constructor = NetConstructor(net_name)
 
@@ -78,5 +79,7 @@ class NetFactory:
         out_features: Optional[int] = None,
         only_return_modules: bool = True,
     ) -> Tuple[nn.Module, NetInfo]:
-        modules_config, net_info = self.modules_info_processor(in_features, out_features)
+        modules_config, net_info = self.modules_info_processor(
+            in_features, out_features
+        )
         return self.net_constructor(modules_config, net_info, only_return_modules)

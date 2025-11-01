@@ -3,7 +3,7 @@ from typing import Iterator, Optional, Tuple, overload
 import torch
 import torch.nn as nn
 
-from lightning.nn import Conv2dBlock, EmbedLstmMlp, GruMlp, LstmMlp
+from thunder.nn import Conv2dBlock, EmbedLstmMlp, GruMlp, LstmMlp
 
 __all__ = [
     "get_trajectory_lengths",
@@ -270,5 +270,4 @@ def all_recurrent(*networks: Iterator[nn.Module]) -> bool:
     Returns:
         Whether the given networks are all recurrent network.
     """
-    return all(map(is_recurrent, networks))
     return all(map(is_recurrent, networks))

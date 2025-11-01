@@ -8,7 +8,7 @@ from .conv_blocks import (
 from .linear_blocks import LinearBlock, SirenBlock
 from .mamba import MambaBlock
 from .normalization import Normalization, RunningNorm1d
-from .rnn_extension import EmbedLstmMlp, GruMlp, LstmMlp, RecurrentMlp
+from .rnn_blocks import EmbedLstmMlp, GruMlp, LstmMlp, RecurrentMlp
 from .transformer import PositionalEncoding
 
 __all__ = [

@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from whetstone.algorithms.dreamer import Dreamer
+from whetstone.algorithms.dreamer import DreamerV1
 from whetstone.modules.actor import HabitActor
 from whetstone.modules.critic import CriticV
 from whetstone.modules.one_step_model import OneStepModel
@@ -14,7 +14,7 @@ from whetstone.utils.utils import (
 )
 
 
-class Plan2Explore(Dreamer):
+class Plan2Explore(DreamerV1):
     def __init__(
         self,
         observation_shape,

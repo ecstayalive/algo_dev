@@ -7,8 +7,6 @@ ACTIVATION_CLS_NAME = {
     "sigmoid": "Sigmoid",
     "silu": "SiLU",
     "tanh": "Tanh",
-    "elu": "ELU",
-    "ELU": "ELU",
     "hard_tanh": "Hardtanh",
     "hardtanh": "Hardtanh",
 }
